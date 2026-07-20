@@ -5,10 +5,10 @@ browser:
   headless: true
   wait_selector: "table._3arZn0BMPzyhcYNADe193m"
   wait_timeout: 15000
-  # screenshot: "debug_steam.png"
+  screenshot: "debug_steam.html"
 iterate:
   var_name: "region"
-  values: [global,CN,TW,BR,JP,FR,TH,US,KR,HK]
+  values: [global] #,CN,TW,BR,JP,FR,TH,US,KR,HK]
 url: "https://store.steampowered.com/charts/topselling/{region}"
 schedule: "20 * * * *"
 target_table: "steam_best_seller_list_hourly"

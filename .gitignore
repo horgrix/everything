@@ -59,3 +59,7 @@ crawler.db
 
 # browser driver
 chromedriver.exe
+
+# debug files
+debug_steam.png
+debug_steam.html

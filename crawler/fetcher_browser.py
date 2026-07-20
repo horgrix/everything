@@ -161,11 +161,17 @@ class BrowserFetcher:
                 if action_type not in ("wait", "scroll"):
                     await asyncio.sleep(wait_after / 1000)
 
-            # 3. 截图（调试用）
+            # 3. 截图 / HTML快照（调试用）
             screenshot_path = browser_config.get("screenshot")
             if screenshot_path:
-                await page.screenshot(path=screenshot_path, full_page=True)
-                logger.info("截图已保存: %s", screenshot_path)
+                if screenshot_path.endswith(".html"):
+                    html = await page.content()
+                    with open(screenshot_path, "w", encoding="utf-8") as f:
+                        f.write(html)
+                    logger.info("HTML快照已保存: %s (%d 字符)", screenshot_path, len(html))
+                else:
+                    await page.screenshot(path=screenshot_path, full_page=True)
+                    logger.info("截图已保存: %s", screenshot_path)
 
             # 4. 返回完整 HTML
             html = await page.content()
