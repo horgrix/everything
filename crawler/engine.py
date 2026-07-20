@@ -165,7 +165,12 @@ class CrawlerEngine:
                 if var_name not in row:
                     row[var_name] = str(val)
 
-            cleaned = [Cleaner().clean(row, parser_fields) for row in parsed]
+            cleaned=[]
+            for row in parsed:
+                clean = Cleaner().clean(row, parser_fields)
+                if clean is not None:
+                    cleaned.append(clean)
+
             for row in cleaned:
                 if "source_url" in _field_names(parser_fields) and "source_url" not in row:
                     row["source_url"] = url

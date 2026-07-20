@@ -47,14 +47,16 @@ class Cleaner:
             清洗后的 dict
         """
         cleaned = {}
-
         # 建立字段名→清洗配置的映射
         field_config_map = {f["name"]: f for f in parser_fields}
-
+        
         for key, value in data.items():
-            field_config = field_config_map.get(key, {})
-            cleaned[key] = self.clean_field(value, field_config)
 
+            field_config = field_config_map.get(key, {})
+            clean_value = self.clean_field(value, field_config)
+            if Cleaner._match_conditions(clean_value, field_config) == False:
+                return None
+            cleaned[key] = clean_value
         return cleaned
 
     def clean_field(self, value: Any, field_config: dict) -> Any:
@@ -177,3 +179,29 @@ class Cleaner:
         # 如果都解析不了，返回原文
         logger.debug("无法解析日期: %s", text)
         return text
+    
+    # ================================================================
+    # 公共工具
+    # ================================================================
+    @staticmethod
+    def _match_conditions(value: Any, field_config: dict) -> bool:
+
+        filters: dict = field_config.get("where", {})
+        if not filters:
+            return True
+        
+        op, expected = filters.get("op", "=="), filters.get("value")
+        actual = value
+        try:
+            if op == ">" and not (actual is not None and actual > expected): return False
+            elif op == "<" and not (actual is not None and actual < expected): return False
+            elif op == ">=" and not (actual is not None and actual >= expected): return False
+            elif op == "<=" and not (actual is not None and actual <= expected): return False
+            elif op == "==" and actual != expected: return False
+            elif op == "!=" and actual == expected: return False
+            elif op == "in" and actual not in expected: return False
+            elif op == "not_in" and actual in expected: return False
+            elif op == "contains" and expected not in str(actual): return False
+        except (TypeError, ValueError):
+            return False
+        return True

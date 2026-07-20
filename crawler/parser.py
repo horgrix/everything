@@ -81,7 +81,7 @@ class Parser:
                     row, field, parser_config, context
                 )
             results.append(mapped)
-
+        
         # 3. 过滤
         return self._apply_filters(results, parser_config)
 
@@ -201,9 +201,9 @@ class Parser:
             if selector:
                 elements = target.select(selector)
                 if elements:
-                    return self._post_process_value(self._get_element_value(elements[0], field), field)
+                    return self._get_element_value(elements[0], field)
                 return None
-            return self._post_process_value(self._get_element_value(target, field), field)
+            return self._get_element_value(target, field)
 
         # 仅 selector：在当前元素内查找
         if selector:
@@ -211,10 +211,10 @@ class Parser:
             if elements:
                 if field.get("multiple"):
                     return [self._get_element_value(el, field) for el in elements]
-                return self._post_process_value(self._get_element_value(elements[0], field), field)
+                return self._get_element_value(elements[0], field)
             return None
 
-        return self._post_process_value(self._get_element_value(element, field), field)
+        return self._get_element_value(element, field)
 
     @staticmethod
     def _post_process_value(value: Any, field: dict) -> Any:
@@ -305,10 +305,12 @@ class Parser:
                 result[name] = [self._get_element_value(el, field) for el in elements]
         return result
 
-    # ================================================================
-    # 公共工具
-    # ================================================================
-
+    @staticmethod
+    def _resolve_value(value: str, context: dict) -> str:
+        if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+            return context.get(value[1:-1], value)
+        return value
+    
     @staticmethod
     def _apply_filters(rows: list[dict], parser_config: dict) -> list[dict]:
         filters = parser_config.get("filters", {})
@@ -322,33 +324,4 @@ class Parser:
         if (n := filters.get("tail")) and n > 0:
             rows = rows[-n:]
 
-        where = filters.get("where")
-        if where:
-            rows = [r for r in rows if Parser._match_conditions(r, where)]
-
         return rows
-
-    @staticmethod
-    def _match_conditions(row: dict, conditions: list[dict]) -> bool:
-        for cond in conditions:
-            field, op, expected = cond["field"], cond.get("op", "=="), cond.get("value")
-            actual = row.get(field)
-            try:
-                if op == ">" and not (actual is not None and actual > expected): return False
-                elif op == "<" and not (actual is not None and actual < expected): return False
-                elif op == ">=" and not (actual is not None and actual >= expected): return False
-                elif op == "<=" and not (actual is not None and actual <= expected): return False
-                elif op == "==" and actual != expected: return False
-                elif op == "!=" and actual == expected: return False
-                elif op == "in" and actual not in expected: return False
-                elif op == "not_in" and actual in expected: return False
-                elif op == "contains" and expected not in str(actual): return False
-            except (TypeError, ValueError):
-                return False
-        return True
-
-    @staticmethod
-    def _resolve_value(value: str, context: dict) -> str:
-        if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
-            return context.get(value[1:-1], value)
-        return value

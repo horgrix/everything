@@ -1,4 +1,4 @@
-name: "Steam游戏畅销榜小时采集任务"
+name: "Steam游戏畅销榜周采集任务"
 type: web
 method: GET
 browser:
@@ -8,13 +8,18 @@ browser:
   # screenshot: "debug_steam.html"
   actions:
     - type: "wait"                        
-      ms: 1000
+      ms: 2000
+    - type: "click"                         # 再点一次
+      selector: "button.DialogButton._DialogLayout.Primary.Focusable"
+      wait_after: 5000
+    - type: "wait"                        # 滚动到底部 3 次
+      wait_after: 3000
 iterate:
   var_name: "region"
-  values: [global ,CN,TW,BR,JP,FR,TH,US,KR,HK]
-url: "https://store.steampowered.com/charts/topselling/{region}"
-schedule: "20 * * * *"
-target_table: "steam_best_seller_list_hourly"
+  values: [global,CN,TW,BR,JP,FR,TH,US,KR,HK]
+url: "https://store.steampowered.com/charts/topsellers/{region}/{today}"
+schedule: "12 21 * * 2"
+target_table: "steam_best_seller_list_weekly"
 table_schema:
   columns:
     - name: id
