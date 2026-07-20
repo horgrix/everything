@@ -5,11 +5,7 @@ browser:
   headless: true
   wait_selector: "table._3arZn0BMPzyhcYNADe193m"
   wait_timeout: 15000
-  screenshot: "debug_steam.png"
-  actions:
-    - type: "click"
-      selector: "button.DialogButton._DialogLayout.Primary.Focusable"
-      wait_after: 5000
+  # screenshot: "debug_steam.png"
 iterate:
   var_name: "region"
   values: [global,CN,TW,BR,JP,FR,TH,US,KR,HK]
@@ -35,7 +31,7 @@ table_schema:
       unique: true
 parser:
   type: html_table
-  row_selector: "table._3arZn0BMPzyhcYNADe193m tr"
+  row_selector: "table._3arZn0BMPzyhcYNADe193m tbody tr"
   filters:
     where:
       - field: steam_id

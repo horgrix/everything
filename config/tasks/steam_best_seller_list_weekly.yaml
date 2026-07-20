@@ -1,4 +1,4 @@
-name: "Steam游戏畅销榜小时采集任务"
+name: "Steam游戏畅销榜周采集任务"
 type: web
 method: GET
 browser:
@@ -6,9 +6,13 @@ browser:
   wait_selector: "table._3arZn0BMPzyhcYNADe193m"
   wait_timeout: 15000
   actions:
+    - type: "wait"
+      ms: 2000
     - type: "click"
       selector: "button.DialogButton._DialogLayout.Primary.Focusable"
       wait_after: 5000
+    - type: "wait"
+      ms: 3000
 iterate:
   var_name: "region"
   values: [global,CN,TW,BR,JP,FR,TH,US,KR,HK]
