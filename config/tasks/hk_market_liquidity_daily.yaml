@@ -1,0 +1,71 @@
+name: "香港金融市场流动性每日数据采集任务"
+type: api
+method: GET
+url: "https://api.hkma.gov.hk/public/market-data-and-statistics/daily-monetary-statistics/daily-figures-interbank-liquidity?choose=end_of_date&from={days_ago:90}&to={today}"
+schedule: "0 18 * * *"
+target_table: "hk_market_liquidity_daily"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: end_of_date
+      type: TEXT
+    - name: cu_weakside
+      type: REAL
+    - name: cu_strongside
+      type: REAL
+    - name: disc_win_base_rate
+      type: REAL
+    - name: hibor_overnight
+      type: REAL
+    - name: hibor_fixing_1m
+      type: REAL
+    - name: twi
+      type: REAL
+    - name: opening_balance
+      type: REAL
+    - name: closing_balance
+      type: REAL
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_end_of_date
+      columns: [end_of_date]
+      unique: true
+parser:
+  type: json
+  root_path: "result.records"       # 从 JSON 根对象定位到 records 数组
+  fields:
+    - name: end_of_date
+      path: "end_of_date"           # path 相对于数组内每个元素
+      strip: true
+    - name: cu_weakside
+      path: "cu_weakside"
+      to_number: true
+    - name: cu_strongside
+      path: "cu_strongside"
+      to_number: true
+    - name: disc_win_base_rate
+      path: "disc_win_base_rate"
+      to_number: true
+    - name: hibor_overnight
+      path: "hibor_overnight"
+      to_number: true
+    - name: hibor_fixing_1m
+      path: "hibor_fixing_1m"
+      to_number: true
+    - name: twi
+      path: "twi"
+      to_number: true
+    - name: opening_balance
+      path: "opening_balance"
+      to_number: true
+    - name: closing_balance
+      path: "closing_balance"
+      to_number: true
+anti_spider:
+  enabled: false
+retry:
+  max_attempts: 3
+  backoff_base: 2.0

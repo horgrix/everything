@@ -1,0 +1,154 @@
+"""
+爬虫系统入口。
+
+启动方式:
+    python main.py                          # 使用默认配置
+    python main.py --config config/tasks    # 指定配置目录
+    python main.py --db crawler.db          # 指定数据库路径
+    python main.py --log-level DEBUG        # 设置日志级别
+"""
+
+import os
+import sys
+import argparse
+import asyncio
+import signal
+import logging
+from storage.database import Database
+from scheduler.scheduler import CrawlScheduler
+
+
+def setup_logging(level: str = "INFO"):
+    """配置日志格式"""
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="轻量级 Python 爬虫系统")
+    parser.add_argument(
+        "--config", "-c",
+        default="config/tasks",
+        help="任务配置文件目录 (默认: config/tasks)",
+    )
+    parser.add_argument(
+        "--db", "-d",
+        default="crawler.db",
+        help="SQLite 数据库路径 (默认: crawler.db)",
+    )
+    parser.add_argument(
+        "--log-level", "-l",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="日志级别 (默认: INFO)",
+    )
+    parser.add_argument(
+        "--run-once", "-r",
+        default=None,
+        help="仅运行指定任务一次（按任务名）后退出",
+    )
+    return parser.parse_args()
+
+
+async def run_once(task_name: str, config_dir: str, db: Database):
+    """执行一次指定任务后退出"""
+    from task_manager.loader import TaskLoader
+    from crawler.engine import CrawlerEngine
+
+    loader = TaskLoader(config_dir, db)
+    tasks = loader.load_all()
+
+    target = None
+    for t in tasks:
+        if t["name"] == task_name:
+            target = t
+            break
+
+    if target is None:
+        print(f"未找到任务: {task_name}")
+        print("可用任务:")
+        for t in tasks:
+            print(f"  - {t['name']}")
+        return
+
+    engine = CrawlerEngine()
+    task_id = target["_task_id"]
+    log_id = db.start_crawl_log(task_id)
+
+    import time
+    start = time.time()
+    stats = await engine.run(target, db)
+    duration_ms = int((time.time() - start) * 1000)
+
+    if stats.get("error"):
+        db.fail_crawl_log(log_id, stats["error"], duration_ms)
+    else:
+        db.finish_crawl_log(
+            log_id,
+            records_new=stats.get("new", 0),
+            records_updated=stats.get("updated", 0),
+            records_skipped=stats.get("skipped", 0),
+            duration_ms=duration_ms,
+        )
+
+    print(f"\n任务 '{task_name}' 执行结果:")
+    print(f"  新增: {stats.get('new', 0)}")
+    print(f"  更新: {stats.get('updated', 0)}")
+    print(f"  跳过: {stats.get('skipped', 0)}")
+    print(f"  耗时: {duration_ms / 1000:.1f}s")
+    if stats.get("error"):
+        print(f"  错误: {stats['error']}")
+
+
+def main():
+    args = parse_args()
+    setup_logging(args.log_level)
+    logger = logging.getLogger("main")
+
+    # 初始化数据库
+    db_path = args.db
+    db = Database(db_path)
+    db.init_system_tables()
+    logger.info("数据库已就绪: %s", os.path.abspath(db_path))
+
+    # 确保配置目录存在
+    config_dir = args.config
+    os.makedirs(config_dir, exist_ok=True)
+
+    # --run-once 模式
+    if args.run_once:
+        asyncio.run(run_once(args.run_once, config_dir, db))
+        db.close()
+        return
+
+    # 正常调度模式
+    scheduler = CrawlScheduler(config_dir=config_dir, db=db)
+
+    # 注册信号处理（优雅关闭）
+    def signal_handler(sig, frame):
+        logger.info("收到退出信号，正在关闭...")
+        scheduler.shutdown()
+        db.close()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    scheduler.start()
+
+    try:
+        # 保持事件循环运行
+        asyncio.get_event_loop().run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        scheduler.shutdown()
+        db.close()
+        logger.info("系统已退出")
+
+
+if __name__ == "__main__":
+    main()

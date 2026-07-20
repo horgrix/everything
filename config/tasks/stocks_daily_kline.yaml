@@ -1,0 +1,87 @@
+name: "交易所股票日线信息采集任务"
+type: sdk
+schedule: "0 2 * * *"
+target_table: "stocks_daily_kline"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: code
+      type: TEXT NOT NULL
+    - name: type
+      type: TEXT NOT NULL
+    - name: market
+      type: TEXT NOT NULL
+    - name: date
+      type: TEXT
+    - name: open
+      type: REAL
+    - name: high
+      type: REAL
+    - name: low
+      type: REAL
+    - name: close
+      type: REAL
+    - name: volume
+      type: REAL
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_code_type_market_date
+      columns:
+        - code
+        - type
+        - market
+        - date
+      unique: true
+    - name: idx_code_type_market
+      columns:
+        - code
+        - type
+        - market
+      unique: false
+    - name: idx_code
+      columns:
+        - code
+      unique: false
+    - name: idx_type
+      columns:
+        - type
+      unique: false
+    - name: idx_market
+      columns:
+        - market
+      unique: false
+provider:
+  module: "akshare"
+  function: "stock_hk_daily"
+  params:
+    symbol: "02400"
+    adjust: "qfq"
+parser:
+  type: sdk_mapping
+  fields:
+    - name: code
+      value: "02400"
+    - name: type
+      value: "STOCK"
+    - name: market
+      value: "HK"
+    - name: date
+      source: "date"
+    - name: open
+      source: "open"
+      to_number: true
+    - name: high
+      source: "high"
+      to_number: true
+    - name: low
+      source: "low"
+      to_number: true
+    - name: close
+      source: "close"
+      to_number: true
+    - name: volume
+      source: "volume"
+      to_number: true
