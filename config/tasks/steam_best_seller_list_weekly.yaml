@@ -13,7 +13,7 @@ iterate:
   var_name: "region"
   values: [global,CN,TW,BR,JP,FR,TH,US,KR,HK]
 url: "https://store.steampowered.com/charts/topsellers/{region}/{today}"
-schedule: "0 */6 * * *"
+schedule: "0 21 * * 2"
 target_table: "steam_best_seller_list_weekly"
 table_schema:
   columns:

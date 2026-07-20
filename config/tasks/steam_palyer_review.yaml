@@ -8,7 +8,7 @@ iterate:
     - 2315040    # 火炬之光 国服
     - 4025700    # 心动小镇 国际服
 url: "https://store.steampowered.com/appreviewhistogram/{steam_id}"
-schedule: "0 */6 * * *"
+schedule: "0 8 * * *"
 outputs:
   - target_table: "steam_player_review_recent"
     table_schema:

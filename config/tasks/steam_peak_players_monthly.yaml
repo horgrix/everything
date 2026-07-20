@@ -8,7 +8,7 @@ iterate:
     - 2315040    # 火炬之光 国服
     - 4025700    # 心动小镇 国际服
 url: "https://steamcharts.com/app/{steam_id}"
-schedule: "0 */6 * * *"
+schedule: "35 8 2 * *"
 target_table: "steam_game_peak_players_monthly"
 table_schema:
   columns:
@@ -32,6 +32,8 @@ table_schema:
 parser:
   type: html_table
   row_selector: "table.common-table tbody tr"
+  filters:
+    skip_lines: 1   # 跳过第1行（表头）
   fields:
     - name: steam_id
       value: "{steam_id}"

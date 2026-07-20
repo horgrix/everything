@@ -294,10 +294,12 @@ class Parser:
         if not filters:
             return rows
 
-        if (n := filters.get("tail")) and n > 0:
-            rows = rows[-n:]
+        if (n := filters.get("skip_lines")) and n > 0:
+            rows = rows[n:]
         if (n := filters.get("head")) and n > 0:
             rows = rows[:n]
+        if (n := filters.get("tail")) and n > 0:
+            rows = rows[-n:]
 
         where = filters.get("where")
         if where:

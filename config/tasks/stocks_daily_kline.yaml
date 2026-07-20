@@ -1,6 +1,6 @@
 name: "交易所股票日线信息采集任务"
 type: sdk
-schedule: "0 2 * * *"
+schedule: "0 7 * * *"
 target_table: "stocks_daily_kline"
 table_schema:
   columns:
