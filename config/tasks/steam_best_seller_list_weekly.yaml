@@ -36,6 +36,7 @@ parser:
   type: html_table
   row_selector: "table._3arZn0BMPzyhcYNADe193m tbody tr"
   filters:
+    skip_lines: 1
     where:
       - field: steam_id
         op: "in"
