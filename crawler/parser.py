@@ -201,9 +201,9 @@ class Parser:
             if selector:
                 elements = target.select(selector)
                 if elements:
-                    return self._get_element_value(elements[0], field)
+                    return self._post_process_value(self._get_element_value(elements[0], field), field)
                 return None
-            return self._get_element_value(target, field)
+            return self._post_process_value(self._get_element_value(target, field), field)
 
         # 仅 selector：在当前元素内查找
         if selector:
@@ -211,10 +211,31 @@ class Parser:
             if elements:
                 if field.get("multiple"):
                     return [self._get_element_value(el, field) for el in elements]
-                return self._get_element_value(elements[0], field)
+                return self._post_process_value(self._get_element_value(elements[0], field), field)
             return None
 
-        return self._get_element_value(element, field)
+        return self._post_process_value(self._get_element_value(element, field), field)
+
+    @staticmethod
+    def _post_process_value(value: Any, field: dict) -> Any:
+        """对提取后的值立即应用 regex_extract + to_number，使 where 过滤可用"""
+        if not isinstance(value, str):
+            return value
+
+        pattern = field.get("regex_extract")
+        if pattern:
+            import re
+            m = re.search(pattern, value)
+            value = m.group(1) if m and m.groups() else (m.group(0) if m else value)
+
+        if field.get("to_number") and value:
+            try:
+                value = float(value)
+                value = int(value) if value == int(value) else value
+            except (ValueError, TypeError):
+                pass
+
+        return value
 
     @staticmethod
     def _get_element_value(element, field: dict) -> str:
