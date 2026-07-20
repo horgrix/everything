@@ -107,7 +107,7 @@ class CrawlScheduler:
     def _execute_task_wrapper(self, task_config: dict):
         """
         APScheduler 不允许直接运行 async 函数，
-        此方法作为同步包装器。
+        此方法作为同步包装器，在运行中的事件循环内调度异步任务。
         """
         name = task_config.get("name", "unknown")
         task_id = task_config.get("_task_id", 0)
@@ -119,14 +119,16 @@ class CrawlScheduler:
         log_id = self.db.start_crawl_log(task_id)
 
         try:
-            # 在事件循环中运行异步任务
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果调度器的事件循环已运行，创建新任务
-                asyncio.ensure_future(self._execute_task(task_config, log_id, start_time))
-            else:
-                # 兼容性：如果还没事件循环
-                loop.run_until_complete(self._execute_task(task_config, log_id, start_time))
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._execute_task(task_config, log_id, start_time))
+        except RuntimeError:
+            # 没有运行中的事件循环（不应发生，但做兜底）
+            try:
+                asyncio.run(self._execute_task(task_config, log_id, start_time))
+            except Exception as e:
+                duration_ms = int((time.time() - start_time) * 1000)
+                self.db.fail_crawl_log(log_id, str(e), duration_ms)
+                logger.error("任务 '%s' 执行异常: %s", name, e)
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
             self.db.fail_crawl_log(log_id, str(e), duration_ms)

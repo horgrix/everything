@@ -9,7 +9,6 @@
 """
 
 import os
-import sys
 import argparse
 import asyncio
 import signal
@@ -103,9 +102,8 @@ async def run_once(task_name: str, config_dir: str, db: Database):
         print(f"  错误: {stats['error']}")
 
 
-def main():
-    args = parse_args()
-    setup_logging(args.log_level)
+async def _async_main(args):
+    """异步主函数：调度器必须在事件循环内部启动。"""
     logger = logging.getLogger("main")
 
     # 初始化数据库
@@ -120,34 +118,40 @@ def main():
 
     # --run-once 模式
     if args.run_once:
-        asyncio.run(run_once(args.run_once, config_dir, db))
+        await run_once(args.run_once, config_dir, db)
         db.close()
         return
 
     # 正常调度模式
     scheduler = CrawlScheduler(config_dir=config_dir, db=db)
 
-    # 注册信号处理（优雅关闭）
-    def signal_handler(sig, frame):
-        logger.info("收到退出信号，正在关闭...")
-        scheduler.shutdown()
-        db.close()
-        sys.exit(0)
+    # 使用 asyncio.Event 实现优雅关闭
+    stop_event = asyncio.Event()
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop_event.set)
+        except NotImplementedError:
+            # Windows 不支持 add_signal_handler，回退到 signal.signal
+            signal.signal(sig, lambda s, f: stop_event.set())
 
+    # 启动调度器（此时事件循环已运行）
     scheduler.start()
 
     try:
-        # 保持事件循环运行
-        asyncio.get_event_loop().run_forever()
-    except KeyboardInterrupt:
-        pass
+        await stop_event.wait()
     finally:
+        logger.info("收到退出信号，正在关闭...")
         scheduler.shutdown()
         db.close()
         logger.info("系统已退出")
+
+
+def main():
+    args = parse_args()
+    setup_logging(args.log_level)
+    asyncio.run(_async_main(args))
 
 
 if __name__ == "__main__":
