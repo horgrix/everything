@@ -8,7 +8,7 @@
   - sdk_mapping   : SDK 返回的 list[dict] 字段映射
 
 核心入口：
-  - parse()          → 单记录模式（dict）
+  - parse()          → 单记录模式（dict），内部委托给 parse_rows()
   - parse_rows()     → 多记录模式（list[dict]），统一处理 JSON/HTML/SDK
 """
 
@@ -36,19 +36,9 @@ class Parser:
     # ================================================================
 
     def parse(self, raw_content: str, parser_config: dict, context: dict = None) -> dict:
-        """单记录模式，返回单个 dict"""
-        if context is None:
-            context = {}
-        fields = parser_config.get("fields", [])
-        parser_type = parser_config.get("type", "json")
-
-        if parser_type in ("html", "css_selector"):
-            return self._parse_html_single(raw_content, fields, context)
-        elif parser_type == "json":
-            return self._parse_json_single(raw_content, fields, context)
-        else:
-            logger.warning("未知解析器类型: %s，回退为 JSON 解析", parser_type)
-            return self._parse_json_single(raw_content, fields, context)
+        """单记录模式，内部委托给 parse_rows 取第一条结果"""
+        rows = self.parse_rows(raw_content, parser_config, context)
+        return rows[0] if rows else {}
 
     def parse_rows(self, raw_content_or_data, parser_config: dict,
                    context: dict = None) -> list[dict]:
@@ -81,24 +71,9 @@ class Parser:
                     row, field, parser_config, context
                 )
             results.append(mapped)
-        
+
         # 3. 过滤
         return self._apply_filters(results, parser_config)
-
-    def parse_sdk_mapping(self, data: list[dict], parser_config: dict,
-                          context: dict = None) -> list[dict]:
-        """向后兼容：直接委托给 parse_rows"""
-        return self.parse_rows(data, {**parser_config, "type": "sdk_mapping"}, context)
-
-    def parse_array(self, raw_content: str, parser_config: dict,
-                    context: dict = None) -> list[dict]:
-        """向后兼容：直接委托给 parse_rows"""
-        return self.parse_rows(raw_content, parser_config, context)
-
-    def parse_html_array(self, html: str, parser_config: dict,
-                         context: dict = None) -> list[dict]:
-        """向后兼容：直接委托给 parse_rows"""
-        return self.parse_rows(html, {**parser_config, "type": "html_table"}, context)
 
     # ================================================================
     # 原始行提取器 —— 各 parser type 专有逻辑
@@ -217,27 +192,6 @@ class Parser:
         return self._get_element_value(element, field)
 
     @staticmethod
-    def _post_process_value(value: Any, field: dict) -> Any:
-        """对提取后的值立即应用 regex_extract + to_number，使 where 过滤可用"""
-        if not isinstance(value, str):
-            return value
-
-        pattern = field.get("regex_extract")
-        if pattern:
-            import re
-            m = re.search(pattern, value)
-            value = m.group(1) if m and m.groups() else (m.group(0) if m else value)
-
-        if field.get("to_number") and value:
-            try:
-                value = float(value)
-                value = int(value) if value == int(value) else value
-            except (ValueError, TypeError):
-                pass
-
-        return value
-
-    @staticmethod
     def _get_element_value(element, field: dict) -> str:
         """从 BeautifulSoup 元素获取文本或属性值"""
         attr = field.get("attr")
@@ -256,61 +210,12 @@ class Parser:
             current = current[key]
         return current
 
-    # ================================================================
-    # 单记录提取方法（向后兼容）
-    # ================================================================
-
-    def _parse_json_single(self, raw: str, fields: list[dict], context: dict) -> dict:
-        import json
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            logger.error("JSON 解析失败: %s", e)
-            return {}
-
-        result = {}
-        for field in fields:
-            name = field["name"]
-            if "value" in field:
-                result[name] = self._resolve_value(field["value"], context)
-                continue
-            json_path = field.get("path") or field.get("selector")
-            if json_path:
-                try:
-                    result[name] = self._get_nested_value(data, json_path)
-                except (KeyError, IndexError, TypeError):
-                    result[name] = None
-            else:
-                result[name] = None
-        return result
-
-    def _parse_html_single(self, html: str, fields: list[dict], context: dict) -> dict:
-        soup = BeautifulSoup(html, "lxml")
-        result = {}
-        for field in fields:
-            name = field["name"]
-            if "value" in field:
-                result[name] = self._resolve_value(field["value"], context)
-                continue
-            selector = field.get("selector")
-            if not selector:
-                result[name] = None
-                continue
-            elements = soup.select(selector)
-            if not elements:
-                result[name] = None
-            elif len(elements) == 1 or not field.get("multiple"):
-                result[name] = self._get_element_value(elements[0], field)
-            else:
-                result[name] = [self._get_element_value(el, field) for el in elements]
-        return result
-
     @staticmethod
     def _resolve_value(value: str, context: dict) -> str:
         if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
             return context.get(value[1:-1], value)
         return value
-    
+
     @staticmethod
     def _apply_filters(rows: list[dict], parser_config: dict) -> list[dict]:
         filters = parser_config.get("filters", {})

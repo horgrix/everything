@@ -26,19 +26,16 @@ outputs:
           columns: [crawled_at]
           unique: true
     parser:
-      type: css_selector
+      type: html_table
+      row_selector: "font"
       fields:
         - name: total_turnover_hkd
-          selector: "font"
           regex_extract: '市場總成交[^\d]*HKD\s*([\d,]+)'
         - name: all_ss_percentage
-          selector: "font"
           regex_extract: '賣空所有指定證券佔市場總成交的百分比[^\d]*(\d+%)'
         - name: ex_exchange_traded_products_ss_percentage
-          selector: "font"
           regex_extract: '賣空指定證券（不包括交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
         - name: exchange_traded_products_only_ss_percentage
-          selector: "font"
           regex_extract: '賣空指定證券（僅限交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
 
   - target_table: "hk_stock_short_selling_daily"
@@ -60,18 +57,16 @@ outputs:
           columns: [crawled_at]
           unique: true
     parser:
-      type: css_selector
+      type: html_table
+      row_selector: "font"
       fields:
         - name: code
-          selector: "font"
           regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
           group: 1
         - name: volume
-          selector: "font"
           regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
           group: 2
         - name: amt_hkd
-          selector: "font"
           regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
           group: 3
 anti_spider:

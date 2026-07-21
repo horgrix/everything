@@ -35,9 +35,13 @@ class Cleaner:
         })
     """
 
+    # ================================================================
+    # 公共入口
+    # ================================================================
+
     def clean(self, data: dict, parser_fields: list[dict]) -> dict:
         """
-        对解析结果中的所有字段依次清洗。
+        对解析结果中的所有字段依次清洗。始终返回清洗后的 dict。
 
         参数:
             data: Parser 解析后的原始 dict
@@ -46,18 +50,39 @@ class Cleaner:
         返回:
             清洗后的 dict
         """
-        cleaned = {}
-        # 建立字段名→清洗配置的映射
         field_config_map = {f["name"]: f for f in parser_fields}
-        
+        cleaned = {}
         for key, value in data.items():
-
             field_config = field_config_map.get(key, {})
-            clean_value = self.clean_field(value, field_config)
-            if Cleaner._match_conditions(clean_value, field_config) == False:
-                return None
-            cleaned[key] = clean_value
+            cleaned[key] = self.clean_field(value, field_config)
         return cleaned
+
+    def should_keep(self, row: dict, parser_fields: list[dict]) -> bool:
+        """
+        检查清洗后的行是否满足所有字段的 where 过滤条件。
+
+        返回 True 表示保留该行，False 表示排除。
+        """
+        field_config_map = {f["name"]: f for f in parser_fields}
+        for key, value in row.items():
+            field_config = field_config_map.get(key, {})
+            if not self._match_conditions(value, field_config):
+                return False
+        return True
+
+    def clean_batch(self, rows: list[dict], parser_fields: list[dict]) -> list[dict]:
+        """
+        批量清洗并过滤。先 clean 再按 where 条件排除不满足的行。
+
+        返回:
+            清洗并过滤后的 list[dict]
+        """
+        results = []
+        for row in rows:
+            cleaned = self.clean(row, parser_fields)
+            if self.should_keep(cleaned, parser_fields):
+                results.append(cleaned)
+        return results
 
     def clean_field(self, value: Any, field_config: dict) -> Any:
         """
@@ -71,8 +96,7 @@ class Cleaner:
             清洗后的值
         """
         if value is None:
-            default_val = field_config.get("default")
-            return default_val
+            return field_config.get("default")
 
         # 清洗规则可以在 field_config.clean 子节点，也可以直接放在 field_config 上
         clean_rules = field_config.get("clean", field_config)
@@ -180,17 +204,17 @@ class Cleaner:
         # 如果都解析不了，返回原文
         logger.debug("无法解析日期: %s", text)
         return text
-    
+
     # ================================================================
-    # 公共工具
+    # 过滤条件
     # ================================================================
+
     @staticmethod
     def _match_conditions(value: Any, field_config: dict) -> bool:
-
         filters: dict = field_config.get("where", {})
         if not filters:
             return True
-        
+
         op, expected = filters.get("op", "=="), filters.get("value")
         actual = value
         try:
@@ -206,3 +230,12 @@ class Cleaner:
         except (TypeError, ValueError):
             return False
         return True
+
+    # ================================================================
+    # 工具
+    # ================================================================
+
+    @staticmethod
+    def field_names(fields: list[dict]) -> list[str]:
+        """从 fields 配置中提取字段名列表"""
+        return [f["name"] for f in fields]

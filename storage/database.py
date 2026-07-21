@@ -205,12 +205,13 @@ class Database:
     # ================================================================
 
     def insert_business_record(self, table_name: str, data: dict) -> int:
-        """向业务表插入一条记录（委托批量写入）。返回 lastrowid。"""
-        result = self.insert_business_records_batch(table_name, [data])
-        cur = self.conn.execute(
-            f"SELECT last_insert_rowid()"
-        )
-        return cur.fetchone()[0]
+        """向业务表插入一条记录。返回 lastrowid。"""
+        columns = ", ".join(data.keys())
+        placeholders = ", ".join(["?" for _ in data])
+        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        cur = self.conn.execute(sql, list(data.values()))
+        self.conn.commit()
+        return cur.lastrowid
 
     def update_business_record(self, table_name: str, record_id: int,
                                 data: dict, id_column: str = "id"):

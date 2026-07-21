@@ -3,6 +3,7 @@ HTTP 请求模块：基于 aiohttp 的异步请求，支持指数退避重试。
 """
 
 import asyncio
+import json
 import logging
 from typing import Optional
 import aiohttp
@@ -128,5 +129,4 @@ class Fetcher:
         """
         text = await self.fetch(url, method=method, headers=headers,
                                 data=data, json_data=json_data)
-        import json
         return json.loads(text)

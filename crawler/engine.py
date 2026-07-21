@@ -1,14 +1,10 @@
 """
-爬虫引擎：HTTP/xHR/SDK 请求 → 解析 → 清洗 → 批量写入 完整流水线。
+爬虫引擎：统一流水线模型。
 
-路由规则（按优先级）：
-  1. type=sdk        → SDK 流水线
-  2. outputs 配置    → 多表输出（内部处理 iterate）
-  3. iterate 配置    → 多值迭代
-  4. 其余           → 单记录/数组展开模式
+所有任务收敛为一条流水线：
+  上下文展开（iterate） → 数据获取（SDK/HTTP） → 输出展开（outputs） → 解析清洗写入
 """
 
-import time
 import logging
 from .dedup import URLDedup
 from .fetcher import Fetcher
@@ -27,214 +23,170 @@ class CrawlerEngine:
 
     def __init__(self):
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
+        self._parser = Parser()
+        self._cleaner = Cleaner()
 
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
-        """执行一次爬取任务，返回 {"new": ..., "updated": ..., "skipped": ..., "error": ...}"""
+        """
+        执行一次爬取任务。
+
+        流程：iterate 展开 → fetch → outputs 展开 → 解析清洗写入
+
+        返回:
+            {"new": N, "updated": N, "skipped": N, "error": str|None}
+        """
         if url_context is None:
             url_context = {}
 
-        task_type = task_config.get("type", "web")
-
-        # 分支路由
-        if task_type == "sdk":
-            return await self._run_sdk(task_config, db, url_context)
-
-        if task_config.get("outputs"):
-            return await self._run_outputs(task_config, db)
-
-        if task_config.get("iterate"):
-            return await self._run_iterate(task_config, db, url_context)
-
-        return await self._run_single(task_config, db, url_context)
-
-    # ================================================================
-    # 分支处理器
-    # ================================================================
-
-    async def _run_sdk(self, task_config: dict, db, url_context: dict) -> dict:
-        """SDK 流水线"""
-        name = task_config.get("name", "unknown")
+        contexts = self._build_iterate_contexts(task_config, url_context)
         stats = {"new": 0, "updated": 0, "skipped": 0, "error": None}
 
-        try:
-            provider = SDKProvider()
-            raw_rows = provider.call(task_config.get("provider", {}))
-            if not raw_rows:
-                logger.info("SDK 任务 '%s' 返回空数据", name)
-                return stats
-
-            logger.info("SDK 返回 %d 条原始数据", len(raw_rows))
-            target_table = task_config["target_table"]
-            result = self._parse_and_store(
-                raw_rows, task_config.get("parser", {}), target_table, db,
-                context=url_context,
-            )
-            stats["new"], stats["updated"] = result["inserted"], result["updated"]
-            stats["skipped"] = len(raw_rows) - result["inserted"] - result["updated"]
-        except Exception as e:
-            logger.error("SDK 任务 '%s' 失败: %s", name, e)
-            stats["error"] = str(e)
-        return stats
-
-    async def _run_single(self, task_config: dict, db, url_context: dict) -> dict:
-        """单请求模式（web/api 无 iterate/outputs）"""
-        stats = {"new": 0, "updated": 0, "skipped": 0, "error": None}
-        parser_config = task_config.get("parser", {})
-        parser_fields = parser_config.get("fields", [])
-        target_table = task_config["target_table"]
-        task_id = task_config.get("_task_id", 0)
-
-        raw_url = url_context.get("url") or task_config.get("url")
-        url = URLTemplate.resolve(raw_url, context={"task_name": task_config.get("name", "")})
-        method = task_config.get("method", "GET")
-
-        logger.info("请求: %s %s", method, url)
-        if self._url_dedup.is_duplicate(url):
-            logger.info("URL 去重跳过: %s", url)
-            stats["skipped"] += 1
-            return stats
-
-        try:
-            raw_content = await self._fetch(task_config, url, method)
-        except Exception as e:
-            logger.error("请求失败: %s", e)
-            stats["error"] = str(e)
-            return stats
-
-        is_array_mode = parser_config.get("root_path") is not None
-
-        if is_array_mode:
-            result = self._parse_and_store(
-                raw_content, parser_config, target_table, db,
-                context={"url": url},
-            )
-            stats["new"], stats["updated"] = result["inserted"], result["updated"]
-            stats["skipped"] = result["total"] - result["inserted"] - result["updated"]
-        else:
-            parser = Parser()
-            cleaner = Cleaner()
-            parsed = parser.parse(raw_content, parser_config, context={"url": url})
-            cleaned = cleaner.clean(parsed, parser_fields)
-            if "source_url" in _field_names(parser_fields) and "source_url" not in cleaned:
-                cleaned["source_url"] = url
-
-            content_hash = db.hash_content(cleaned)
-            dedup = db.check_dedup(url, task_id, target_table)
-
-            if dedup is None:
-                record_id = db.insert_business_record(target_table, cleaned)
-                db.upsert_dedup(url, task_id, target_table, record_id, content_hash)
-                stats["new"] = 1
-            elif dedup["content_hash"] != content_hash:
-                db.update_business_record(target_table, dedup["record_id"], cleaned)
-                db.upsert_dedup(url, task_id, target_table, dedup["record_id"], content_hash)
-                stats["updated"] = 1
-            else:
-                db.upsert_dedup(url, task_id, target_table, dedup["record_id"], content_hash)
-                stats["skipped"] = 1
-
-        return stats
-
-    async def _run_iterate(self, task_config: dict, db, url_context: dict) -> dict:
-        """多值迭代模式"""
-        ic = task_config["iterate"]
-        var_name, values = ic["var_name"], ic["values"]
-        parser_config = task_config.get("parser", {})
-        parser_fields = parser_config.get("fields", [])
-        target_table = task_config["target_table"]
-        raw_url = url_context.get("url") or task_config.get("url")
-        method = task_config.get("method", "GET")
-
-        logger.info("多值迭代: %s in %s (共 %d)", var_name, values, len(values))
-        all_cleaned = []
-
-        for idx, val in enumerate(values):
-            ctx = {**url_context, var_name: str(val)}
-            url = URLTemplate.resolve(raw_url, context=ctx)
-            if self._url_dedup.is_duplicate(url):
-                continue
-
+        for idx, ctx in enumerate(contexts):
+            # 1. 获取原始数据
             try:
-                raw_content = await self._fetch(task_config, url, method)
+                raw_data = await self._fetch_data(task_config, ctx)
             except Exception as e:
-                logger.error("[%d/%d] %s=%s 失败: %s", idx + 1, len(values), var_name, val, e)
+                logger.error("[%d/%d] 数据获取失败: %s", idx + 1, len(contexts), e)
+                stats["error"] = str(e)
                 continue
 
-            parsed = Parser().parse_rows(raw_content, parser_config, context={"url": url, **ctx})
-            for row in parsed:
-                if var_name not in row:
-                    row[var_name] = str(val)
-
-            cleaned=[]
-            for row in parsed:
-                clean = Cleaner().clean(row, parser_fields)
-                if clean is not None:
-                    cleaned.append(clean)
-
-            for row in cleaned:
-                if "source_url" in _field_names(parser_fields) and "source_url" not in row:
-                    row["source_url"] = url
-            all_cleaned.extend(cleaned)
-            logger.info("[%d/%d] %s=%s: %d 条", idx + 1, len(values), var_name, val, len(cleaned))
-
-        if all_cleaned:
-            r = db.insert_business_records_batch(target_table, all_cleaned)
-            return {"new": r["inserted"], "updated": r["updated"],
-                    "skipped": len(all_cleaned) - r["inserted"] - r["updated"], "error": None}
-        return {"new": 0, "updated": 0, "skipped": 0, "error": None}
-
-    async def _run_outputs(self, task_config: dict, db) -> dict:
-        """多表输出模式（内部处理 iterate）"""
-        outputs = task_config["outputs"]
-        iterate_config = task_config.get("iterate", {})
-        method = task_config.get("method", "GET")
-        raw_url = task_config.get("url", "")
-
-        has_iterate = bool(iterate_config)
-        values = iterate_config.get("values", [None])
-        var_name = iterate_config.get("var_name", "")
-
-        stats = {"new": 0, "updated": 0, "skipped": 0, "error": None}
-
-        for idx, val in enumerate(values):
-            ctx = {var_name: str(val)} if has_iterate else {}
-            url = URLTemplate.resolve(raw_url, context=ctx)
-            if has_iterate and self._url_dedup.is_duplicate(url):
+            if raw_data is None:
                 continue
 
-            try:
-                raw_content = await self._fetch(task_config, url, method)
-            except Exception as e:
-                logger.error("[%d/%d] 请求失败: %s", idx + 1, len(values), e)
-                continue
+            # 2. 展开输出目标
+            outputs = self._resolve_outputs(task_config)
 
+            # 3. 对每个输出目标执行 解析→清洗→写入
             for output_config in outputs:
-                table = output_config["target_table"]
-                pc = output_config.get("parser", {})
-                pf = pc.get("fields", [])
-
-                ts = output_config.get("table_schema", {})
-                if ts:
-                    db.ensure_business_table(table, ts.get("columns", []), ts.get("indexes", []))
-
-                parsed = Parser().parse_rows(raw_content, pc, context={"url": url, **ctx})
-                if not parsed:
-                    continue
-                for row in parsed:
-                    if has_iterate and var_name not in row:
-                        row[var_name] = str(val)
-
-                cleaned = [Cleaner().clean(row, pf) for row in parsed]
-                r = db.insert_business_records_batch(table, cleaned)
+                r = self._process_output(raw_data, output_config, db, ctx)
                 stats["new"] += r["inserted"]
                 stats["updated"] += r["updated"]
-                logger.info("[%d/%d] 写入 '%s': +%d ~%d", idx + 1, len(values), table,
-                             r["inserted"], r["updated"])
+                stats["skipped"] += r["total"] - r["inserted"] - r["updated"]
 
         return stats
 
     # ================================================================
-    # 公共方法
+    # 上下文展开：iterate 横切逻辑
+    # ================================================================
+
+    def _build_iterate_contexts(self, task_config: dict, url_context: dict) -> list[dict]:
+        """
+        如果配置了 iterate，按 values 展开为一组上下文；否则按主配置构建单个上下文。
+
+        每个 context 包含解析后的 url 和注入的变量。
+        """
+        iterate_config = task_config.get("iterate", {})
+        raw_url = url_context.get("url") or task_config.get("url", "")
+
+        if not iterate_config:
+            # 无 iterate：按主配置构建单个上下文
+            ctx = {**url_context}
+            ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
+            return [ctx]
+
+        var_name = iterate_config["var_name"]
+        values = iterate_config["values"]
+
+        contexts = []
+        for val in values:
+            ctx = {**url_context, var_name: str(val)}
+            ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
+            contexts.append(ctx)
+
+        logger.info("iterate 展开: %s 共 %d 个上下文", var_name, len(contexts))
+        return contexts
+
+    # ================================================================
+    # 数据获取：SDK / HTTP 路由
+    # ================================================================
+
+    async def _fetch_data(self, task_config: dict, ctx: dict):
+        """
+        根据 task type 获取原始数据。
+
+        type=sdk → SDKProvider.call；否则 → HTTP/browser fetch。
+        """
+        task_type = task_config.get("type", "web")
+
+        if task_type == "sdk":
+            provider = SDKProvider()
+            return provider.call(task_config.get("provider", {}))
+
+        # HTTP / browser 请求
+        url = ctx.get("url") or task_config.get("url")
+        method = task_config.get("method", "GET")
+
+        if self._url_dedup.is_duplicate(url):
+            logger.info("URL 去重跳过: %s", url)
+            return None
+
+        logger.info("请求: %s %s", method, url)
+        return await self._fetch(task_config, url, method)
+
+    # ================================================================
+    # 输出展开：outputs 横切逻辑
+    # ================================================================
+
+    def _resolve_outputs(self, task_config: dict) -> list[dict]:
+        """
+        如果配置了 outputs，返回 outputs 列表；否则将主配置包装为单元素列表。
+
+        每个 output_config 包含: target_table, parser, table_schema（可选）
+        """
+        outputs = task_config.get("outputs")
+        if outputs:
+            return outputs
+
+        # 单表模式：主配置即输出配置
+        return [{
+            "target_table": task_config["target_table"],
+            "parser": task_config.get("parser", {}),
+            "table_schema": task_config.get("table_schema", {}),
+        }]
+
+    # ================================================================
+    # 核心流水线：解析 → 清洗 → 注入 → 写入（唯一路径）
+    # ================================================================
+
+    def _process_output(self, raw_data, output_config: dict, db, ctx: dict) -> dict:
+        """
+        对单次获取的原始数据，按输出配置完成：解析 → 清洗 → 注入 source_url → 批量写入。
+
+        返回:
+            {"inserted": N, "updated": N, "total": N}
+        """
+        table = output_config["target_table"]
+        parser_config = output_config.get("parser", {})
+        parser_fields = parser_config.get("fields", [])
+        table_schema = output_config.get("table_schema", {})
+
+        # 动态建表（如果有 table_schema 配置）
+        if table_schema:
+            db.ensure_business_table(table, table_schema.get("columns", []),
+                                     table_schema.get("indexes", []))
+
+        # 解析
+        parsed = self._parser.parse_rows(raw_data, parser_config, context=ctx)
+        if not parsed:
+            return {"inserted": 0, "updated": 0, "total": 0}
+
+        # 清洗并过滤
+        cleaned = self._cleaner.clean_batch(parsed, parser_fields)
+
+        # 注入 source_url（如果字段配置中声明了 source_url）
+        src_field_names = Cleaner.field_names(parser_fields)
+        url = ctx.get("url", "")
+        if "source_url" in src_field_names and url:
+            for row in cleaned:
+                if "source_url" not in row:
+                    row["source_url"] = url
+
+        # 批量写入
+        result = db.insert_business_records_batch(table, cleaned)
+        return {"inserted": result["inserted"], "updated": result["updated"], "total": len(cleaned)}
+
+    # ================================================================
+    # HTTP 请求（保留原逻辑）
     # ================================================================
 
     async def _fetch(self, task_config: dict, url: str, method: str) -> str:
@@ -256,25 +208,3 @@ class CrawlerEngine:
         )
         async with anti:
             return await fetcher.fetch(url, method=method, encoding=encoding)
-
-    def _parse_and_store(self, raw_content, parser_config: dict, target_table: str,
-                          db, context: dict = None) -> dict:
-        """解析 → 清洗 → 批量写入，返回 {"inserted": N, "updated": N, "total": N}"""
-        parser = Parser()
-        cleaner = Cleaner()
-        parser_fields = parser_config.get("fields", [])
-
-        parsed = parser.parse_rows(raw_content, parser_config, context=context)
-        cleaned = [cleaner.clean(row, parser_fields) for row in parsed]
-
-        src_fields = _field_names(parser_fields)
-        for row in cleaned:
-            if "source_url" in src_fields and "source_url" not in row:
-                row["source_url"] = context.get("url", "") if context else ""
-
-        result = db.insert_business_records_batch(target_table, cleaned)
-        return {"inserted": result["inserted"], "updated": result["updated"], "total": len(cleaned)}
-
-
-def _field_names(fields: list[dict]) -> list[str]:
-    return [f["name"] for f in fields]
