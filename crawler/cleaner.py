@@ -103,9 +103,10 @@ class Cleaner:
 
         if "regex_extract" in clean_rules:
             pattern = clean_rules["regex_extract"]
+            group = clean_rules.get('group', 1)
             match = re.search(pattern, value)
             if match:
-                value = match.group(1) if match.groups() else match.group(0)
+                value = match.group(group) if match.groups() else match.group(0)
             else:
                 value = clean_rules.get("default", "")
 

@@ -46,7 +46,8 @@ class Fetcher:
 
     async def fetch(self, url: str, method: str = "GET",
                     headers: dict = None, data: dict = None,
-                    json_data: dict = None) -> str:
+                    json_data: dict = None,
+                    encoding: str = 'utf-8') -> str:
         """
         发起 HTTP 请求并返回响应文本。
 
@@ -88,7 +89,8 @@ class Fetcher:
                             # 2xx/3xx/4xx：直接返回
                             # 注意：有些网站 4xx 也可能需要重试（如 429 Too Many Requests）
                             # 这里遵循约定：4xx 不重试
-                            text = await response.text()
+                        
+                            text = await response.text(encoding=encoding)
                             return text
 
                         # 5xx：服务器错误，触发重试

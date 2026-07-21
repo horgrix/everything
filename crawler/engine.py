@@ -249,12 +249,13 @@ class CrawlerEngine:
 
         anti = AntiSpider(task_config.get("anti_spider", {}))
         retry = task_config.get("retry", {})
+        encoding = task_config.get("encoding", 'utf-8')
         fetcher = Fetcher(
             max_retries=retry.get("max_attempts", 3),
             backoff_base=retry.get("backoff_base", 2.0),
         )
         async with anti:
-            return await fetcher.fetch(url, method=method)
+            return await fetcher.fetch(url, method=method, encoding=encoding)
 
     def _parse_and_store(self, raw_content, parser_config: dict, target_table: str,
                           db, context: dict = None) -> dict:
