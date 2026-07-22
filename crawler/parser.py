@@ -71,7 +71,7 @@ class Parser:
                     row, field, parser_config, context
                 )
             results.append(mapped)
-
+        
         # 3. 过滤
         return self._apply_filters(results, parser_config)
 

@@ -1,6 +1,6 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v1.1 | 最后更新：2026-07-18
+> 版本：v1.2 | 最后更新：2026-07-22
 
 ---
 
@@ -19,8 +19,9 @@
 11. [反反爬配置 anti_spider](#反反爬配置-anti_spider)
 12. [重试配置 retry](#重试配置-retry)
 13. [SDK 数据源配置 provider](#sdk-数据源配置-provider)
-14. [完整示例](#完整示例)
-15. [常见问题](#常见问题)
+14. [文件数据源配置 file](#文件数据源配置-file)
+15. [完整示例](#完整示例)
+16. [常见问题](#常见问题)
 
 ---
 
@@ -135,6 +136,8 @@ name: "新闻头条采集"
   - `web`：网页采集（HTML 响应）
   - `api`：JSON API 采集
   - `sdk`：第三方 SDK 调用采集
+  - `csv`：CSV 文件读取采集
+  - `excel`：Excel 文件读取采集
 
 ```yaml
 type: api
@@ -148,6 +151,37 @@ type: api
 
 ```yaml
 method: POST
+```
+
+### file（csv/excel 类型专属）
+
+- **类型**：`dict`
+- **必填**：`csv` / `excel` 类型必填
+- **说明**：文件路径和读取参数配置。
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `format` | string | - | 文件格式：`csv` 或 `excel` |
+| `path` | string | - | 文件路径（相对于项目根目录或绝对路径） |
+| `encoding` | string | `utf-8` | 文件编码 |
+| `delimiter` | string | `,` | CSV 分隔符（仅 CSV 有效） |
+| `sheet_name` | string/int | `0` | Excel 工作表名或索引（仅 Excel 有效） |
+
+```yaml
+# CSV 文件
+type: csv
+file:
+  format: csv
+  path: "data/offline/steam_players.csv"
+  encoding: utf-8
+  delimiter: ","
+
+# Excel 文件
+type: excel
+file:
+  format: excel
+  path: "data/offline/history_data.xlsx"
+  sheet_name: "2026Q3"
 ```
 
 ### url
@@ -889,6 +923,107 @@ retry:
 
 ---
 
+## 文件数据源配置 file
+
+文件数据源支持从 **CSV** 和 **Excel** 文件中读取数据，用于离线任务和历史数据补录。文件读取后返回 `list[dict]`，通过 `sdk_mapping` 解析器做字段映射后写入数据库。
+
+### 依赖
+
+- CSV：Python 标准库 `csv`，无需额外依赖
+- Excel：需要 `openpyxl` 库
+  ```bash
+  pip install openpyxl
+  ```
+
+### CSV 配置示例
+
+假设 `data/offline/steam_players.csv` 内容如下：
+
+```csv
+steam_id,stat_ts,peak_players
+1974050,1664582400000,20954
+1974050,1667260800000,18549
+```
+
+对应的任务 YAML：
+
+```yaml
+name: "Steam玩家离线数据补录"
+type: csv
+file:
+  format: csv
+  path: "data/offline/steam_players.csv"
+  encoding: utf-8
+schedule: "0 2 * * *"            # 定时任务或手动 --run-once
+target_table: "steam_game_peak_players_hourly"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: steam_id
+      type: INTEGER
+    - name: stat_ts
+      type: INTEGER
+    - name: peak_players
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_steam_id_stat_ts
+      columns: [steam_id, stat_ts]
+      unique: true
+parser:
+  type: sdk_mapping               # 文件数据已是 dict，用 sdk_mapping 透传
+  fields:
+    - name: steam_id
+      source: steam_id             # 映射 CSV 列名
+      to_number: true
+    - name: stat_ts
+      source: stat_ts
+      to_number: true
+    - name: peak_players
+      source: peak_players
+      to_number: true
+```
+
+### Excel 配置示例
+
+```yaml
+name: "A股历史数据补录"
+type: excel
+file:
+  format: excel
+  path: "data/offline/stock_history.xlsx"
+  sheet_name: "daily"              # 工作表名；也可用索引如 0
+schedule: "0 3 * * *"
+target_table: "stock_daily"
+table_schema: {...}
+parser:
+  type: sdk_mapping
+  fields:
+    - name: code
+      source: "股票代码"           # 映射 Excel 表头列名
+    - name: trade_date
+      source: "交易日期"
+    - name: open
+      source: "开盘价"
+      to_number: true
+    # ...
+```
+
+### 注意事项
+
+- CSV/Excel 的第一行默认为表头（列名），系统用 `DictReader` / `openpyxl` 将表头作为 dict 的 key
+- `sdk_mapping` 解析器不修改原数据，仅做字段映射（`source` 映射原始列名 → `name` 数据库列名）
+- 数据走与 SDK/HTTP 完全相同的 cleanser → 批量 UPSERT 流水线，无需额外处理
+- 配合 `--run-once` 实现手动补数据：
+  ```bash
+  python main.py --run-once "Steam玩家离线数据补录"
+  ```
+
+---
+
 ## SDK 数据源配置 provider
 
 - **类型**：`dict`
@@ -1127,6 +1262,10 @@ python main.py --run-once "任务名" --log-level DEBUG
 ### Q: URL 模板变量在哪些地方可用？
 
 目前 URL 模板变量在 `url` 字段中可用，解析后的完整 URL 会通过 `{url}` 占位符传递给 `parser.fields` 中的 `source_url` 等字段。
+
+### Q: 文件数据源的 CSV/Excel 表头如何处理？
+
+CSV 使用第一行作为列名（通过 `csv.DictReader`），Excel 使用第一行作为列名（通过 `openpyxl`）。如果 Excel 第一行不是表头，需要先在文件中调整或删除无效行。
 
 ### Q: {today} 的时间基准是什么？
 

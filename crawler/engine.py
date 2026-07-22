@@ -14,6 +14,7 @@ from .anti_spider import AntiSpider
 from .sdk_provider import SDKProvider
 from .template import URLTemplate
 from .fetcher_browser import BrowserFetcher
+from .file_reader import FileReader
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class CrawlerEngine:
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
         self._parser = Parser()
         self._cleaner = Cleaner()
+        self._file_reader = FileReader()
 
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
         """
@@ -111,6 +113,9 @@ class CrawlerEngine:
         if task_type == "sdk":
             provider = SDKProvider()
             return provider.call(task_config.get("provider", {}))
+
+        if task_type in ("csv", "excel"):
+            return self._file_reader.read(task_config.get("file", {}))
 
         # HTTP / browser 请求
         url = ctx.get("url") or task_config.get("url")
