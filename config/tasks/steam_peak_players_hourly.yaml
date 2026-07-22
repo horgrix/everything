@@ -32,12 +32,14 @@ parser:
   root_path: ""                        # JSON 本身是数组，不需要路径定位
   array_index_mapping: true            # 每个元素是 [ts, players] 格式
   filters:                             # 数据过滤（可选）
-    tail: 24                           # 只保留最近24条
+    tail: 48                           # 只保留最近24条
   fields:
     - name: steam_id
       value: "{steam_id}"              # 引用迭代变量
     - name: stat_ts
       position: 0                      # 数组第一个元素（时间戳）
+      to_number: true
+      ts_floor_to_hour: true
     - name: peak_players
       position: 1                      # 数组第二个元素（峰值玩家数）
 anti_spider:

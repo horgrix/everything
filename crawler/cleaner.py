@@ -148,6 +148,13 @@ class Cleaner:
         if clean_rules.get("to_datetime") and value:
             value = self._to_datetime(value, clean_rules)
 
+        # --- 类型计算（在类型转换之后） ---
+        if clean_rules.get("ts_floor_to_hour") and value:
+            value= self._ts_floor_to_hour(value)
+
+        if clean_rules.get("ts_floor_to_day") and value:
+            value= self._ts_floor_to_day(value)
+
         return value
 
     # ================================================================
@@ -204,7 +211,32 @@ class Cleaner:
         # 如果都解析不了，返回原文
         logger.debug("无法解析日期: %s", text)
         return text
+    
+    @staticmethod
+    def _ts_floor_to_hour(ts: int) -> int:
+        """尝试将时间戳按小时取整"""
 
+        # 1小时毫秒数：用于整小时取整
+        _HOUR_MS = 3_600_000
+        try:
+            floor_ts = ts // _HOUR_MS * _HOUR_MS
+            return floor_ts
+        except ValueError:
+            logger.debug("无法将 '%s' 转换按小时取整", ts)
+            return ts
+    
+    @staticmethod
+    def _ts_floor_to_day(ts: int) -> int:
+        """尝试将时间戳按天取整"""
+
+        # 1小时毫秒数：用于整小时取整
+        _DAY_MS = 24 * 3_600_000
+        try:
+            floor_ts = ts // _DAY_MS * _DAY_MS
+            return floor_ts
+        except ValueError:
+            logger.debug("无法将 '%s' 转换按小时取整", ts)
+            return ts
     # ================================================================
     # 过滤条件
     # ================================================================
