@@ -5,7 +5,7 @@ iterate:
   var_name: "code"
   values: 
     - '02400'    # 心动
-url: "https://hk.eastmoney.com/buyback.html?code={code}&sdate={days_ago:7}&edate={today}"
+url: "https://hk.eastmoney.com/buyback.html?code={code}&sdate={days_ago:2}&edate={today}"
 encoding: 'utf-8'
 schedule: "33 20 * * *"
 outputs:

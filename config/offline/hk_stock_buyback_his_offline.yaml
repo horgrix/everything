@@ -1,15 +1,16 @@
-name: "东方财富港股做空每日采集任务"
+name: "东方财富港股回购离线任务"
 type: web
 method: GET
 iterate:
-  var_name: "code"
+  var_name: "page"
   values: 
-    - '02400'    # 心动
-url: "https://hk.eastmoney.com/sellshort.html?code={code}&sdate={days_ago:2}&edate={today}"
+    - 1 
+    - 2   
+url: "https://hk.eastmoney.com/buyback_{page}.html?code=02400&sdate=&edate="
 encoding: 'utf-8'
-schedule: "15 19 * * *"
+schedule: "33 20 * * *"
 outputs:
-  - target_table: "hk_stock_short_selling_daily"
+  - target_table: "hk_stock_buyback_daily"
     table_schema:
       columns:
         - name: id
@@ -20,15 +21,15 @@ outputs:
         - name: code
           type: TEXT
         - name: volume
-          type: INTEGER
+          type: TEXT
+        - name: high_price
+          type: REAL
+        - name: low_price
+          type: REAL
         - name: avg_price
           type: REAL
         - name: amt_hkd
-          type: INTEGER
-        - name: trade_amt_hkd
-          type: INTEGER
-        - name: short_ratio
-          type: TEXT
+          type: REAL
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       indexes:
@@ -40,29 +41,30 @@ outputs:
       row_selector: "table.table.table_striped.center tbody tr"
       fields:
         - name: stat_date
-          column: 9
+          column: 8
           strip: true
         - name: code
-          value: "{code}"
+          value: "02400"
         - name: volume
+          column: 3
+          strip: true
+          number_expr_to_int: true
+        - name: high_price
           column: 4
           strip: true
           to_number: true
-        - name: avg_price
+        - name: low_price
           column: 5
           strip: true
           to_number: true
-        - name: amt_hkd
+        - name: avg_price
           column: 6
           strip: true
-          number_expr_to_int: true
-        - name: trade_amt_hkd
+          to_number: true
+        - name: amt_hkd
           column: 7
           strip: true
           number_expr_to_int: true
-        - name: short_ratio
-          column: 8
-          strip: true
 anti_spider:
   enabled: false
   delay:

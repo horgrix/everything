@@ -1,7 +1,7 @@
 name: "香港金融市场流动性每日数据采集任务"
 type: api
 method: GET
-url: "https://api.hkma.gov.hk/public/market-data-and-statistics/daily-monetary-statistics/daily-figures-interbank-liquidity?choose=end_of_date&from={days_ago:90}&to={today}"
+url: "https://api.hkma.gov.hk/public/market-data-and-statistics/daily-monetary-statistics/daily-figures-interbank-liquidity?choose=end_of_date&from={days_ago:7}&to={today}"
 schedule: "0 20 * * 1-5"
 target_table: "hk_market_liquidity_daily"
 table_schema:

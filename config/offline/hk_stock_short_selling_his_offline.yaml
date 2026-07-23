@@ -1,11 +1,15 @@
-name: "东方财富港股做空每日采集任务"
+name: "东方财富港股做空离线任务"
 type: web
 method: GET
 iterate:
-  var_name: "code"
+  var_name: "page"
   values: 
-    - '02400'    # 心动
-url: "https://hk.eastmoney.com/sellshort.html?code={code}&sdate={days_ago:2}&edate={today}"
+    - 1 
+    - 2 
+    - 3
+    - 4
+    - 5  
+url: "https://hk.eastmoney.com/sellshort_{page}.html?code=02400&sdate=&edate="
 encoding: 'utf-8'
 schedule: "15 19 * * *"
 outputs:
