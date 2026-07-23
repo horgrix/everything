@@ -1,0 +1,75 @@
+name: "东方财富港股做空每日采集任务"
+type: web
+method: GET
+iterate:
+  var_name: "code"
+  values: 
+    - '02400'    # 心动
+url: "https://hk.eastmoney.com/sellshort.html?code={code}&sdate={days_ago:7}&edate={today}"
+encoding: 'utf-8'
+schedule: "15 19 * * *"
+outputs:
+  - target_table: "hk_stock_short_selling_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: stat_date
+          type: TEXT
+        - name: code
+          type: TEXT
+        - name: volume
+          type: INTEGER
+        - name: avg_price
+          type: REAL
+        - name: amt_hkd
+          type: INTEGER
+        - name: trade_amt_hkd
+          type: INTEGER
+        - name: short_ratio
+          type: TEXT
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      indexes:
+        - name: idx_uk_code_stat_date
+          columns: [code, stat_date]
+          unique: true
+    parser:
+      type: html_table
+      row_selector: "table.table.table_striped.center tbody tr"
+      fields:
+        - name: stat_date
+          column: 9
+          strip: true
+        - name: code
+          value: "{code}"
+        - name: volume
+          column: 4
+          strip: true
+          to_number: true
+        - name: avg_price
+          column: 5
+          strip: true
+          to_number: true
+        - name: amt_hkd
+          column: 6
+          strip: true
+          number_expr_to_int: true
+        - name: trade_amt_hkd
+          column: 7
+          strip: true
+          number_expr_to_int: true
+        - name: short_ratio
+          column: 8
+          strip: true
+anti_spider:
+  enabled: false
+  delay:
+    - 1
+    - 3
+  rotate_user_agent: false
+  use_proxy: false
+retry:
+  max_attempts: 3
+  backoff_base: 2.0

@@ -37,38 +37,6 @@ outputs:
           regex_extract: '賣空指定證券（不包括交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
         - name: exchange_traded_products_only_ss_percentage
           regex_extract: '賣空指定證券（僅限交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
-
-  - target_table: "hk_stock_short_selling_daily"
-    table_schema:
-      columns:
-        - name: id
-          type: INTEGER
-          constraint: PRIMARY KEY AUTOINCREMENT
-        - name: code
-          type: TEXT
-        - name: volume
-          type: TEXT
-        - name: amt_hkd
-          type: TEXT
-        - name: crawled_at
-          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-      indexes:
-        - name: idx_uk_crawled_at
-          columns: [crawled_at]
-          unique: true
-    parser:
-      type: html_table
-      row_selector: "font"
-      fields:
-        - name: code
-          regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
-          group: 1
-        - name: volume
-          regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
-          group: 2
-        - name: amt_hkd
-          regex_extract: '(\d{3,4})\s+心動公司[^\d]*([\d,]+)\s+([\d,]+)'
-          group: 3
 anti_spider:
   enabled: false
   delay:

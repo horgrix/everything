@@ -141,6 +141,8 @@ class Cleaner:
                 value = re.sub(pattern, replacement, value)
 
         # --- 类型转换（在文本清洗之后） ---
+        if clean_rules.get("number_expr_to_int") and value:
+            value = self._number_expr_to_int(value)
 
         if clean_rules.get("to_number") and value:
             value = self._to_number(value)
@@ -237,6 +239,47 @@ class Cleaner:
         except ValueError:
             logger.debug("无法将 '%s' 转换按小时取整", ts)
             return ts
+        
+    @staticmethod
+    def _number_expr_to_int(text: str) -> int:
+        """
+        将数字表达式转换为浮点数
+        
+        支持单位：亿、万、千、百、十、M、B
+        示例：
+            "1967.05万亿" -> 196705000000000.0
+            "1234.56万" -> 12345600.0
+            "5.67亿" -> 567000000.0
+        """
+        # 定义单位映射（单位：基本数值）
+        unit_map = {
+            '十': 10,
+            '百': 100,
+            '千': 1000,
+            '万': 10000,
+            'M': 1000000,
+            '亿': 100000000,
+            'B': 1000000000
+        }
+        
+        # 移除可能的空格
+        text = text.replace(' ', '')
+        
+        # 匹配模式：数字（可能包含小数点）+ 单位序列
+        pattern = r'^([\d.]+)\s*(.*)$'
+        match = re.match(pattern, text)
+        
+        if not match:
+            raise ValueError(f"无法解析: {text}")
+        
+        number_str = match.group(1)
+        unit_str = match.group(2)
+        
+        # 将数字字符串转为浮点数
+        base_number = float(number_str)
+    
+        return int(base_number * unit_map.get(unit_str, "1"))
+
     # ================================================================
     # 过滤条件
     # ================================================================

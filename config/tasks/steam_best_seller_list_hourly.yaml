@@ -11,7 +11,7 @@ browser:
       ms: 1000
 iterate:
   var_name: "region"
-  values: [global ,CN,TW,BR,JP,FR,TH,US,KR,HK]
+  values: [global,CN,TW,BR,JP,FR,TH,US,KR]
 url: "https://store.steampowered.com/charts/topselling/{region}"
 schedule: "20 * * * *"
 target_table: "steam_best_seller_list_hourly"
@@ -27,7 +27,7 @@ table_schema:
     - name: region
       type: TEXT
     - name: crawled_at
-      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
   indexes:
     - name: idx_uk_steam_id_region_crawled_at
       columns: [steam_id, region, crawled_at]
