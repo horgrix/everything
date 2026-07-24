@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行日志</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+<link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg sticky-top">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand" href="/dashboard/"><i class="bi bi-activity me-2"></i>Crawler</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/dashboard/">仪表盘</a>
+            <a class="nav-link" href="/dashboard/tasks.html">任务</a>
+            <a class="nav-link" href="/dashboard/data.html">数据</a>
+            <a class="nav-link active" href="/dashboard/logs.html">日志</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid px-4 py-4 page-content">
+    <h4 class="mb-4 fw-bold">执行日志</h4>
+
+    <!-- 筛选栏 -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small">任务</label>
+                    <input type="text" class="form-control" id="filterTask" placeholder="任务名称">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">状态</label>
+                    <select class="form-select" id="filterStatus">
+                        <option value="">全部</option>
+                        <option value="success">成功</option>
+                        <option value="running">运行中</option>
+                        <option value="failed">失败</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small">每页</label>
+                    <select class="form-select" id="filterLimit">
+                        <option value="20">20</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div class="col-md-3 pt-md-4">
+                    <button class="btn btn-primary w-100" onclick="loadLogs()">查询</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 表格 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead><tr><th>任务</th><th>状态</th><th>新增</th><th>更新</th><th>跳过</th><th>耗时</th><th>时间</th><th>错误</th></tr></thead>
+                    <tbody id="logList"><tr><td colspan="8" class="text-muted text-center">加载中...</td></tr></tbody>
+                </table>
+            </div>
+            <!-- 分页 -->
+            <nav class="mt-3"><ul class="pagination justify-content-center mb-0" id="pagination"></ul></nav>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/api.js"></script>
+<script>
+let currentPage = 0;
+
+async function loadLogs(page = 0) {
+    currentPage = page;
+    const params = { limit: parseInt(document.getElementById('filterLimit').value), offset: page * parseInt(document.getElementById('filterLimit').value) };
+    const task = document.getElementById('filterTask').value.trim();
+    if (task) params.task_name = task;
+    const status = document.getElementById('filterStatus').value;
+    if (status) params.status = status;
+
+    try {
+        const res = await apiGet('/logs', params);
+        renderTable(res.data);
+        renderPagination(res.total, params.limit, page);
+    } catch(e) {
+        document.getElementById('logList').innerHTML = `<tr><td colspan="8" class="text-danger text-center">${esc(e.message)}</td></tr>`;
+    }
+}
+
+function renderTable(data) {
+    const tbody = document.getElementById('logList');
+    if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-muted text-center">暂无数据</td></tr>';
+        return;
+    }
+    tbody.innerHTML = data.map(l => `
+        <tr>
+            <td>${esc(l.task_name || '-')}</td>
+            <td><span class="badge badge-status bg-${l.status === 'success' ? 'success' : l.status === 'failed' ? 'danger' : 'warning'}">${l.status}</span></td>
+            <td>${l.records_new || 0}</td>
+            <td>${l.records_updated || 0}</td>
+            <td>${l.records_skipped || 0}</td>
+            <td>${l.duration_ms ? (l.duration_ms / 1000).toFixed(1) + 's' : '-'}</td>
+            <td class="text-muted small">${l.run_time || '-'}</td>
+            <td class="text-danger small">${esc(l.error_msg || '')}</td>
+        </tr>
+    `).join('');
+}
+
+function renderPagination(total, limit, page) {
+    const pages = Math.ceil(total / limit);
+    const ul = document.getElementById('pagination');
+    if (pages <= 1) { ul.innerHTML = ''; return; }
+    let html = '';
+    for (let i = 0; i < pages; i++) {
+        html += `<li class="page-item ${i === page ? 'active' : ''}"><a class="page-link" href="#" onclick="loadLogs(${i})">${i + 1}</a></li>`;
+    }
+    ul.innerHTML = html;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+loadLogs();
+</script>
+</body>
+</html>

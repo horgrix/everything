@@ -1,0 +1,83 @@
+/* 自定义样式 */
+
+:root {
+    --sidebar-width: 240px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #f5f6fa;
+    min-height: 100vh;
+}
+
+/* Navbar */
+.navbar {
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    background: #fff !important;
+}
+.navbar-brand {
+    font-weight: 600;
+    letter-spacing: -.5px;
+}
+
+/* Cards */
+.card {
+    border: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    border-radius: 8px;
+    transition: box-shadow .2s;
+}
+.card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+.stat-card {
+    border-left: 4px solid #0d6efd;
+}
+.stat-card .card-title {
+    font-size: .85rem;
+    color: #6c757d;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.stat-card .card-text {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
+/* Table */
+.table {
+    font-size: .875rem;
+}
+.table th {
+    font-weight: 600;
+    color: #495057;
+    border-top: none;
+}
+.table td {
+    vertical-align: middle;
+}
+
+/* Badge */
+.badge-status {
+    font-size: .75rem;
+    padding: .35em .65em;
+}
+
+/* Chart containers */
+.chart-container {
+    min-height: 300px;
+}
+
+/* Toast */
+.toast-container {
+    z-index: 9999;
+}
+
+/* Page fade */
+.page-content {
+    animation: fadeIn .3s ease;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

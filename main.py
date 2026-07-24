@@ -49,6 +49,18 @@ def parse_args():
         default=None,
         help="仅运行指定任务一次（按任务名）后退出",
     )
+    parser.add_argument(
+        "--api",
+        action="store_true",
+        default=False,
+        help="同时启动 HTTP API 服务",
+    )
+    parser.add_argument(
+        "--api-port",
+        type=int,
+        default=8000,
+        help="API 服务端口 (默认: 8000)",
+    )
     return parser.parse_args()
 
 
@@ -139,11 +151,31 @@ async def _async_main(args):
     # 启动调度器（此时事件循环已运行）
     scheduler.start()
 
+    # --api 模式：同时启动 HTTP API 服务
+    api_server = None
+    if args.api:
+        import uvicorn
+        from api import create_app
+
+        api_config = uvicorn.Config(
+            create_app(config_dir=config_dir, db_path=db_path),
+            host="0.0.0.0",
+            port=args.api_port,
+            log_level=args.log_level.lower(),
+        )
+        api_server = uvicorn.Server(api_config)
+        logger.info("API 服务启动在 http://0.0.0.0:%d", args.api_port)
+        # 在后台启动 API（与调度器共享事件循环）
+        api_task = asyncio.create_task(api_server.serve())
+
     try:
         await stop_event.wait()
     finally:
         logger.info("收到退出信号，正在关闭...")
         scheduler.shutdown()
+        if api_server:
+            api_server.should_exit = True
+            await api_task
         db.close()
         logger.info("系统已退出")
 
