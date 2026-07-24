@@ -1,6 +1,6 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v1.2 | 最后更新：2026-07-22
+> 版本：v1.3 | 最后更新：2026-07-24
 
 ---
 
@@ -20,8 +20,9 @@
 12. [重试配置 retry](#重试配置-retry)
 13. [SDK 数据源配置 provider](#sdk-数据源配置-provider)
 14. [文件数据源配置 file](#文件数据源配置-file)
-15. [完整示例](#完整示例)
-16. [常见问题](#常见问题)
+15. [数据库数据源配置 db](#数据库数据源配置-db)
+16. [完整示例](#完整示例)
+17. [常见问题](#常见问题)
 
 ---
 
@@ -138,6 +139,7 @@ name: "新闻头条采集"
   - `sdk`：第三方 SDK 调用采集
   - `csv`：CSV 文件读取采集
   - `excel`：Excel 文件读取采集
+  - `db`：外部数据库查询采集（SQLite / MySQL）
 
 ```yaml
 type: api
@@ -920,6 +922,118 @@ retry:
 ```
 
 > **注意**：仅对网络错误和 5xx 状态码重试，4xx 不重试。
+
+---
+
+## 数据库数据源配置 db
+
+数据库数据源支持从外部 **SQLite** 或 **MySQL** 数据库中执行 SQL 查询，将结果集迁移到系统内部的 SQLite 业务表中。常用于系统间数据迁移、临时数据导入等场景。
+
+### 依赖
+
+- SQLite：Python 标准库 `sqlite3`，无需额外依赖
+- MySQL：需要 `pymysql` 库
+  ```bash
+  pip install pymysql
+  ```
+
+### SQLite 配置示例
+
+```yaml
+name: "SQLite数据迁移"
+type: db
+db:
+  type: sqlite
+  path: "data/source.db"           # 源数据库路径
+  query: "SELECT * FROM daily_trades WHERE date >= '2026-01-01'"
+schedule: "0 3 * * *"
+target_table: "migrated_trades"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: trade_date
+      type: TEXT
+    - name: code
+      type: TEXT
+    - name: open_price
+      type: REAL
+    - name: close_price
+      type: REAL
+    - name: volume
+      type: REAL
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_code_date
+      columns: [code, trade_date]
+      unique: true
+parser:
+  type: sdk_mapping                # 查询结果已是 list[dict]，透传映射
+  fields:
+    - name: trade_date
+      source: trade_date            # 映射 SQL 查询结果的列名
+    - name: code
+      source: code
+    - name: open_price
+      source: open
+      to_number: true
+    - name: close_price
+      source: close
+      to_number: true
+    - name: volume
+      source: volume
+      to_number: true
+```
+
+### MySQL 配置示例
+
+```yaml
+name: "MySQL数据迁移"
+type: db
+db:
+  type: mysql
+  host: "192.168.1.100"
+  port: 3306
+  user: "reader"
+  password: "${MYSQL_PWD}"         # 支持 ${ENV_VAR} 环境变量引用
+  database: "source_db"
+  query: "SELECT * FROM trades WHERE created_at >= '2026-07-01'"
+schedule: "0 4 * * *"
+target_table: "migrated_trades"
+table_schema: {...}
+parser:
+  type: sdk_mapping
+  fields:
+    - name: code
+      source: stock_code
+    # ...
+```
+
+### 配置项说明
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `type` | string | `sqlite` | 数据库类型：`sqlite` 或 `mysql` |
+| `query` | string | - | **必填**，要执行的 SQL 查询语句 |
+| `path` | string | - | SQLite 数据库文件路径（SQLite 必填） |
+| `host` | string | `localhost` | MySQL 主机地址 |
+| `port` | int | `3306` | MySQL 端口 |
+| `user` | string | - | MySQL 用户名 |
+| `password` | string | - | MySQL 密码，支持 `${ENV_VAR}` 环境变量 |
+| `database` | string | - | MySQL 数据库名（MySQL 必填） |
+
+### 安全注意事项
+
+- **密码保护**：密码支持 `${MYSQL_PWD}` 格式的环境变量引用，不在 YAML 中明文存储
+  ```bash
+  # 设置环境变量后运行
+  export MYSQL_PWD=your_password
+  python main.py --run-once "MySQL数据迁移"
+  ```
+- **只读连接**：系统仅执行 SELECT 查询，不会修改源数据库
+- **连接即关**：查询完成后立即关闭连接，不保持长连接
 
 ---
 

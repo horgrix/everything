@@ -15,6 +15,7 @@ from .sdk_provider import SDKProvider
 from .template import URLTemplate
 from .fetcher_browser import BrowserFetcher
 from .file_reader import FileReader
+from .db_reader import DatabaseReader
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class CrawlerEngine:
         self._parser = Parser()
         self._cleaner = Cleaner()
         self._file_reader = FileReader()
+        self._db_reader = DatabaseReader()
 
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
         """
@@ -116,6 +118,9 @@ class CrawlerEngine:
 
         if task_type in ("csv", "excel"):
             return self._file_reader.read(task_config.get("file", {}))
+
+        if task_type == "db":
+            return self._db_reader.read(task_config.get("db", {}))
 
         # HTTP / browser 请求
         url = ctx.get("url") or task_config.get("url")

@@ -1,0 +1,53 @@
+name: "火炬之光赛季明细离线任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT steam_id, ss, ss_day, MAX(peak_players) as peak_players
+    FROM (
+      SELECT steam_id, peak_players, 12 AS ss, ((stat_ts - 1776326400000) / 86400000) + 1 AS ss_day 
+      FROM steam_game_peak_players_hourly 
+      WHERE steam_id in (1974050, 2315040)
+      AND stat_ts >= 1776326400000 AND stat_ts < 1784188800000
+    ) as a
+    GROUP BY steam_id, ss, ss_day
+    UNION ALL
+    SELECT steam_id, 11 as ss, ((stat_ts - 1768521600000) / 86400000) + 1 as ss_day, peak_players
+    FROM torchlight_ss11_steam_game_peak_players_daily
+schedule: "40 * * * *"
+target_table: "torchlight_season_steam_peak_players"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: steam_id
+      type: INTEGER
+    - name: ss
+      type: INTEGER
+    - name: ss_day
+      type: INTEGER
+    - name: peak_players
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_steam_id_ss_ss_day
+      columns: [steam_id, ss, ss_day]
+      unique: true
+parser:
+  type: sdk_mapping
+  fields:
+    - name: steam_id
+      source: steam_id
+      to_number: true   
+    - name: ss
+      source: ss
+      to_number: true     
+    - name: ss_day
+      source: ss_day
+      to_number: true
+    - name: peak_players
+      source: peak_players
+      to_number: true
