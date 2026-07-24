@@ -2,7 +2,7 @@ name: "火炬之光赛季明细小时采集任务"
 type: db
 db:
   type: sqlite
-  path: "crawler.db"
+  path: "/home/ubuntu/.data/crawler.db"
   query: >
     SELECT steam_id, ss, ss_day, MAX(peak_players) as peak_players
     FROM (
