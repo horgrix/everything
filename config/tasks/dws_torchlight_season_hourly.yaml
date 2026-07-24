@@ -2,13 +2,13 @@ name: "火炬之光赛季明细小时采集任务"
 type: db
 db:
   type: sqlite
-  path: "/home/ubuntu/.data/crawler.db"
+  path: "crawler.db"
   query: >
     SELECT steam_id, ss, ss_day, MAX(peak_players) as peak_players
     FROM (
-      SELECT steam_id, 13 as ss, ((stat_ts - 1784188800000) / 86400000) + 1 as ss_day, peak_players
+      SELECT steam_id, 13 as ss, ((stat_ts - 1784217600000) / 86400000) + 1 as ss_day, peak_players
       FROM steam_game_peak_players_hourly 
-      WHERE stat_ts >= 1784188800000 AND stat_ts < 1792051200000
+      WHERE stat_ts >= 1784217600000 AND stat_ts < 1792202400000
       AND steam_id in (1974050, 2315040)
     ) as a
     GROUP BY steam_id, ss, ss_day
