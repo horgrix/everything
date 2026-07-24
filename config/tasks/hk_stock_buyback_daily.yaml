@@ -20,7 +20,7 @@ outputs:
         - name: code
           type: TEXT
         - name: volume
-          type: TEXT
+          type: INTEGER
         - name: high_price
           type: REAL
         - name: low_price
@@ -47,6 +47,7 @@ outputs:
         - name: volume
           column: 3
           strip: true
+          to_number: true
           number_expr_to_int: true
         - name: high_price
           column: 4

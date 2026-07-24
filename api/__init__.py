@@ -10,6 +10,7 @@ FastAPI 应用实例。
 import os
 import logging
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -56,9 +57,13 @@ def create_app(config_dir: str = None, db_path: str = None) -> FastAPI:
     app.include_router(data_router, prefix="/api/data", tags=["data"])
     app.include_router(system_router, prefix="/api/system", tags=["system"])
 
-    # 全局异常处理
+    # 全局异常处理（仅捕获非 HTTP 异常，避免干扰 StaticFiles 的 404）
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
+        if isinstance(exc, StarletteHTTPException):
+            raise exc  # Let FastAPI handle HTTP exceptions normally
         logger.error("未捕获异常: %s", exc, exc_info=True)
         return JSONResponse(
             status_code=500,
