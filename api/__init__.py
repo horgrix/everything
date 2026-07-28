@@ -36,6 +36,15 @@ def create_app(config_dir: str = None, db_path: str = None) -> FastAPI:
     app.state.config_dir = config_dir
     app.state.db_path = db_path
 
+    # 跨域访问（CORS）
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     # 懒加载数据库连接（避免导入时就连接）
     from storage.database import Database
     app.state.db = Database(db_path)
