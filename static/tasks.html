@@ -143,7 +143,7 @@ function renderTable(tbodyId, tasks) {
         <tr>
             <td><strong>${esc(t.name)}</strong></td>
             <td><span class="badge bg-secondary">${t.type || '-'}</span></td>
-            <td><code>${esc(t.target_table || '-')}</code></td>
+            <td>${(t.target_tables || []).map(tbl => `<code>${esc(tbl)}</code>`).join(', ') || '-'}</td>
             <td><code>${esc(t.schedule || '-')}</code></td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>

@@ -38,11 +38,17 @@ async def list_tasks(request: Request):
     tasks = _load_tasks(request)
     result = []
     for t in tasks:
+        # 从 outputs 中提取所有目标表名
+        output_tables = [
+            o.get("target_table", "")
+            for o in t.get("outputs", [])
+            if o.get("target_table")
+        ]
         result.append({
             "name": t.get("name"),
             "type": t.get("type"),
             "schedule": t.get("schedule"),
-            "target_table": t.get("target_table"),
+            "target_tables": output_tables,
             "trigger_type": t.get("_trigger_type", "system"),
             "enabled": t.get("enabled", True),
         })
