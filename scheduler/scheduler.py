@@ -71,6 +71,40 @@ class CrawlScheduler:
         self._scheduler.shutdown(wait=False)
         logger.info("调度器已关闭")
 
+    def add_job(self, task_config: dict):
+        """
+        热加载：动态注册一个新任务到调度器。
+
+        流程：写入 YAML 文件 → 注册到数据库（建表） → 注册到 APScheduler。
+        如果任务已存在则替换。
+        """
+        name = task_config.get("name")
+        if not name:
+            logger.error("add_job 失败: 缺少 name 字段")
+            return None
+
+        # 1. 注册到数据库 + 建表
+        from task_manager.loader import TaskLoader
+        loader = TaskLoader(self.config_dir, self.db)
+        processed = loader._register_task(task_config)
+        if processed is None:
+            logger.error("add_job 失败: 任务注册到数据库失败")
+            return None
+
+        # 2. 同时写入 YAML 文件（持久化）
+        import yaml
+        import os
+        filepath = os.path.join(self.config_dir, f"{name}.yaml")
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
+        logger.info("任务配置已写入: %s", filepath)
+
+        # 3. 注册到 APScheduler
+        self._register_job(processed)
+        self._tasks[name] = processed
+        logger.info("任务 '%s' 已热加载到调度器", name)
+        return processed
+
     def _register_job(self, task_config: dict):
         """
         将单个任务配置注册为 APScheduler 定时任务。

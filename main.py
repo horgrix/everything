@@ -158,7 +158,7 @@ async def _async_main(args):
         from api import create_app
 
         api_config = uvicorn.Config(
-            create_app(config_dir=config_dir, db_path=db_path),
+            create_app(config_dir=config_dir, db_path=db_path, scheduler=scheduler),
             host="0.0.0.0",
             port=args.api_port,
             log_level=args.log_level.lower(),

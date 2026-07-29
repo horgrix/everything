@@ -6,6 +6,7 @@
 """
 
 import logging
+import itertools
 from .dedup import URLDedup
 from .fetcher import Fetcher
 from .parser import Parser
@@ -42,10 +43,22 @@ class CrawlerEngine:
         if url_context is None:
             url_context = {}
 
-        contexts = self._build_iterate_contexts(task_config, url_context)
+        # 将全局 params 变量注入基础上下文
+        base_context = dict(url_context)
+        params = task_config.get("params", {})
+        if params:
+            base_context.update(params)
+
+        # 将 task_name 注入上下文
+        base_context.setdefault("task_name", task_config.get("name", ""))
+
+        contexts = self._build_iterate_contexts(task_config, base_context)
         stats = {"new": 0, "updated": 0, "skipped": 0, "error": None}
 
         for idx, ctx in enumerate(contexts):
+            # 每次迭代前，对 context 中所有字符串值做模板解析
+            ctx = self._resolve_all_templates(ctx)
+
             # 1. 获取原始数据
             try:
                 raw_data = await self._fetch_data(task_config, ctx)
@@ -70,35 +83,71 @@ class CrawlerEngine:
         return stats
 
     # ================================================================
-    # 上下文展开：iterate 横切逻辑
+    # 上下文展开：iterate 横切逻辑（支持多变量笛卡尔积）
     # ================================================================
 
-    def _build_iterate_contexts(self, task_config: dict, url_context: dict) -> list[dict]:
+    def _build_iterate_contexts(self, task_config: dict, base_context: dict) -> list[dict]:
         """
         如果配置了 iterate，按 values 展开为一组上下文；否则按主配置构建单个上下文。
 
+        支持多变量笛卡尔积：
+          iterate:
+            - var_name: "region"
+              values: [global, CN]
+            - var_name: "page"
+              values: [1, 2]
+
         每个 context 包含解析后的 url 和注入的变量。
         """
+        raw_url = base_context.get("url") or task_config.get("url", "")
         iterate_config = task_config.get("iterate", {})
-        raw_url = url_context.get("url") or task_config.get("url", "")
 
         if not iterate_config:
             # 无 iterate：按主配置构建单个上下文
-            ctx = {**url_context}
+            ctx = dict(base_context)
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             return [ctx]
 
-        var_name = iterate_config["var_name"]
-        values = iterate_config["values"]
+        # 统一为列表格式，兼容旧的 dict 单变量配置
+        if isinstance(iterate_config, dict):
+            iterate_config = [iterate_config]
+
+        # 笛卡尔积展开
+        var_names = [item["var_name"] for item in iterate_config]
+        values_lists = [item["values"] for item in iterate_config]
 
         contexts = []
-        for val in values:
-            ctx = {**url_context, var_name: str(val)}
+        for combination in itertools.product(*values_lists):
+            ctx = dict(base_context)
+            for var_name, val in zip(var_names, combination):
+                ctx[var_name] = str(val)
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             contexts.append(ctx)
 
-        logger.info("iterate 展开: %s 共 %d 个上下文", var_name, len(contexts))
+        logger.info("iterate 展开: %s 共 %d 个上下文",
+                     ", ".join(var_names), len(contexts))
         return contexts
+
+    # ================================================================
+    # 模板解析：对 context 中所有字符串值递归替换变量
+    # ================================================================
+
+    @staticmethod
+    def _resolve_all_templates(ctx: dict) -> dict:
+        """
+        遍历 context 中所有值，对字符串类型做 URLTemplate.resolve()。
+        支持嵌套 dict（如 db.query 等复杂配置值）。
+        """
+        def _resolve_value(value):
+            if isinstance(value, str):
+                return URLTemplate.resolve(value, context=ctx)
+            if isinstance(value, dict):
+                return {k: _resolve_value(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [_resolve_value(v) for v in value]
+            return value
+
+        return {k: _resolve_value(v) for k, v in ctx.items()}
 
     # ================================================================
     # 数据获取：SDK / HTTP 路由
@@ -120,6 +169,7 @@ class CrawlerEngine:
             return self._file_reader.read(task_config.get("file", {}))
 
         if task_type == "db":
+            # db.query 中的占位符已在 _resolve_all_templates 中替换
             return self._db_reader.read(task_config.get("db", {}))
 
         # HTTP / browser 请求
@@ -174,6 +224,15 @@ class CrawlerEngine:
         if table_schema:
             db.ensure_business_table(table, table_schema.get("columns", []),
                                      table_schema.get("indexes", []))
+
+        # element_selector：提取页面级元素并注入到 context
+        element_selector_config = parser_config.get("element_selector", {})
+        if element_selector_config:
+            element_vars = self._parser.extract_element_vars(
+                raw_data, element_selector_config
+            )
+            # 注入到 context，供后续字段 value 占位符引用
+            ctx.update(element_vars)
 
         # 解析
         parsed = self._parser.parse_rows(raw_data, parser_config, context=ctx)

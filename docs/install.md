@@ -1,6 +1,6 @@
 # 爬虫系统安装部署文档
 
-> 版本：v1.3 | 最后更新：2026-07-24
+> 版本：v1.4 | 最后更新：2026-07-29
 
 ---
 
@@ -364,8 +364,11 @@ API 和调度器共享同一个 asyncio 事件循环，无需额外进程。
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/tasks` | 列出所有任务（名称、类型、调度、目标表、启用状态） |
-| `GET` | `/api/tasks/{name}` | 获取单个任务完整配置详情 |
-| `POST` | `/api/tasks/{name}/run` | 手动触发任务立即执行，返回新增/更新/跳过统计 |
+| `GET` | `/api/tasks/{name}` | 获取单个任务完整配置详情（含原始 `config_yaml`） |
+| `POST` | `/api/tasks/{name}/run` | 手动触发任务立即执行（自动注册 DB，防止外键错误） |
+| `POST` | `/api/tasks` | **创建新任务**（写入 YAML + 注册 DB + 热加载到调度器） |
+| `PUT` | `/api/tasks/{name}` | **更新任务配置**（覆写文件 + 热重载调度器） |
+| `DELETE` | `/api/tasks/{name}` | **删除任务**（移除调度器 + 删除文件 + 清理 DB） |
 | `GET` | `/api/logs` | 查询执行历史日志（`task_name` + `status` 筛选 + `limit`/`offset` 分页） |
 | `GET` | `/api/logs/{id}` | 单条日志详情 |
 | `GET` | `/api/data/tables` | 列出所有业务表名 |

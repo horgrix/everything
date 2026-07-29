@@ -1,0 +1,122 @@
+# ================================================================
+# 示例：展示所有新增特性的完整配置
+# 此文件仅作参考，不会被实际执行（以 _ 开头被忽略）
+# ================================================================
+
+name: "示例任务-展示所有新特性"
+type: web
+method: GET
+
+# ----------------------------------------------------------
+# 特性1：全局自定义参数 params
+# 可在 URL / query / value / db.query 等任意位置通过 {param_name} 引用
+# ----------------------------------------------------------
+params:
+  steam_id_list: "1974050, 2315040"
+  base_url: "https://store.steampowered.com"
+
+# ----------------------------------------------------------
+# 特性2：内置时间变量（无需在 params 中声明，自动可用）
+#   {today}              → 2026-07-29
+#   {yesterday}          → 2026-07-28
+#   {now}                → 2026-07-29 13:30:00
+#   {timestamp}          → 1753766400
+#   {timestamp_ms}       → 1753766400000
+#   {days_ago:3}         → 2026-07-26
+#   {days_ago:7:%Y%m%d}  → 20260722
+#   {weeks_ago:1}        → 2026-07-22（7天前）
+#   {weeks_ago:2:%Y-%m-%d} → 2026-07-15
+#   {this_week:1}        → 本周一
+#   {this_week:7:%Y%m%d}  → 本周日（格式自定义）
+#   {last_week:1}        → 上周一
+#   {last_week:7}        → 上周日
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# 特性3：iterate 多变量笛卡尔积
+# 旧版单变量格式仍然兼容（dict 会自动转为 list）
+# ----------------------------------------------------------
+iterate:
+  - var_name: "region"
+    values: [global, CN, US]
+  - var_name: "page"
+    values: [1, 2]
+# 展开结果：3 × 2 = 6 个上下文
+
+url: "{base_url}/charts/topselling/{region}?page={page}"
+
+schedule: "0 * * * *"
+
+target_table: "example_table"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: rank
+      type: INTEGER
+    - name: region
+      type: TEXT
+    - name: page
+      type: INTEGER
+    - name: stat_date
+      type: TEXT
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_rank_region_date
+      columns: [rank, region, stat_date]
+      unique: true
+
+parser:
+  type: html_table
+  row_selector: "table.data-table tbody tr"
+
+  # ----------------------------------------------------------
+  # 特性4：element_selector 页面级元素提取
+  # 从表格外部提取统计时间等页面级信息，
+  # 支持清洗规则（strip, to_datetime, to_number, regex_extract 等）
+  # 提取结果注入 context，可在 fields 中通过 value: "{var_name}" 引用
+  # ----------------------------------------------------------
+  element_selector:
+    stat_date:
+      selector: "div.stat-header span.time"
+      strip: true
+      to_datetime: true
+      date_format: "%Y-%m-%d"
+      date_output_format: "%Y-%m-%d"
+    total_count:
+      selector: "div.stat-header span.count"
+      strip: true
+      to_number: true
+    page_title:
+      selector: "h1"
+      strip: true
+      truncate_left: 50
+
+  fields:
+    - name: rank
+      column: 1
+      strip: true
+      to_number: true
+    - name: region
+      value: "{region}"            # iterate 变量
+      strip: true
+    - name: page
+      value: "{page}"              # iterate 变量
+      to_number: true
+    - name: stat_date
+      value: "{stat_date}"         # element_selector 提取并清洗后的值
+    # - name: total_count          # 如需保存 total_count
+    #   value: "{total_count}"
+    #   to_number: true
+
+anti_spider:
+  enabled: false
+  delay: [1, 3]
+  rotate_user_agent: false
+  use_proxy: false
+
+retry:
+  max_attempts: 3
+  backoff_base: 2.0

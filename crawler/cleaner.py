@@ -172,7 +172,9 @@ class Cleaner:
 
     @staticmethod
     def _to_number(text: str) -> int | float:
-        """尝试将文本转为数字"""
+        """尝试将文本转为数字（已为数字则直接返回）"""
+        if not isinstance(text, str):
+            return text  # already numeric
         text = text.strip().replace(",", "").replace("，", "")
         try:
             if "." in text:
@@ -263,7 +265,7 @@ class Cleaner:
         }
         
         # 移除可能的空格
-        text = text.replace(' ', '')
+        text = text.strip().replace(' ', '')
         
         # 匹配模式：数字（可能包含小数点）+ 单位序列
         pattern = r'^([\d.]+)\s*(.*)$'

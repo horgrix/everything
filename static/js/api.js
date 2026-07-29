@@ -17,6 +17,32 @@ async function apiGet(path, params = {}) {
     return body;
 }
 
+async function apiDelete(path) {
+    const resp = await fetch(`${API_BASE}${path}`, { method: 'DELETE' });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ message: resp.statusText }));
+        throw new Error(err.detail || err.message || `HTTP ${resp.status}`);
+    }
+    const body = await resp.json();
+    if (body.code !== 0) throw new Error(body.message || 'Unknown error');
+    return body;
+}
+
+async function apiPut(path, data = {}) {
+    const resp = await fetch(`${API_BASE}${path}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: data ? JSON.stringify(data) : undefined,
+    });
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ message: resp.statusText }));
+        throw new Error(err.detail || err.message || `HTTP ${resp.status}`);
+    }
+    const body = await resp.json();
+    if (body.code !== 0) throw new Error(body.message || 'Unknown error');
+    return body;
+}
+
 async function apiPost(path, data = {}) {
     const resp = await fetch(`${API_BASE}${path}`, {
         method: 'POST',

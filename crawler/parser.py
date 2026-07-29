@@ -7,14 +7,20 @@
   - html_table    : HTML 表格多行解析
   - sdk_mapping   : SDK 返回的 list[dict] 字段映射
 
+html_table 支持 element_selector：在表格之外提取页面级元素（如统计时间标题），
+提取结果注入 context 后可通过 value 占位符引用到每行数据中。
+
 核心入口：
-  - parse()          → 单记录模式（dict），内部委托给 parse_rows()
-  - parse_rows()     → 多记录模式（list[dict]），统一处理 JSON/HTML/SDK
+  - parse()            → 单记录模式（dict），内部委托给 parse_rows()
+  - parse_rows()       → 多记录模式（list[dict]），统一处理 JSON/HTML/SDK
+  - extract_element_vars() → 提取 element_selector 指定的页面级变量
 """
 
 import logging
+import re as _re
 from typing import Any
 from bs4 import BeautifulSoup
+from .cleaner import Cleaner
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +31,79 @@ class Parser:
 
     使用方式:
         parser = Parser()
-        # 单记录
-        data = parser.parse(html_text, {"type": "css_selector", "fields": [...]})
+        # 提取页面级元素
+        vars = parser.extract_element_vars(html, {
+            "stat_time": {"selector": "div.header span.time", "attr": "data-ts"}
+        })
         # 多记录
         rows = parser.parse_rows(json_text, {"type": "json", "root_path": "data.items", "fields": [...]})
     """
+
+    def __init__(self):
+        self._cleaner = Cleaner()
+
+    # ================================================================
+    # element_selector：页面级元素提取（用于 html_table 等场景）
+    # ================================================================
+
+    def extract_element_vars(self, raw_html: str,
+                             element_selector_config: dict) -> dict:
+        """
+        从 HTML 页面中提取 element_selector 指定的页面级变量。
+
+        YAML 配置示例:
+            element_selector:
+              stat_time:
+                selector: "div.header span.time"
+                attr: "data-timestamp"
+                strip: true
+                to_number: true
+              title:
+                selector: "h1.page-title"
+                strip: true
+
+        提取结果经过 Cleaner 清洗后返回 dict，可直接注入 context。
+        """
+        if not element_selector_config or not raw_html:
+            return {}
+
+        soup = BeautifulSoup(raw_html, "lxml")
+        result = {}
+
+        for var_name, var_config in element_selector_config.items():
+            if not isinstance(var_config, dict):
+                result[var_name] = var_config
+                continue
+
+            selector = var_config.get("selector", "")
+            if not selector:
+                logger.warning("element_selector '%s' 缺少 selector 配置", var_name)
+                continue
+
+            elements = soup.select(selector)
+            if not elements:
+                logger.warning("element_selector '%s' selector='%s' 未匹配到元素",
+                               var_name, selector)
+                result[var_name] = ""
+                continue
+
+            # 提取第一个匹配元素的值
+            element = elements[0]
+            attr = var_config.get("attr")
+            value = element.get(attr, "") if attr else element.get_text()
+
+            # 生成 field_config 传给 Cleaner.clean_field 做清洗
+            # 过滤掉非清洗配置的键（selector, attr 等）
+            clean_config = {k: v for k, v in var_config.items()
+                           if k not in ("selector", "attr")}
+
+            if clean_config:
+                value = self._cleaner.clean_field(value, {"clean": clean_config})
+
+            result[var_name] = value
+
+        logger.debug("element_selector 提取结果: %s", result)
+        return result
 
     # ================================================================
     # 公共入口
@@ -71,7 +145,7 @@ class Parser:
                     row, field, parser_config, context
                 )
             results.append(mapped)
-        
+
         # 3. 过滤
         return self._apply_filters(results, parser_config)
 

@@ -4,6 +4,7 @@ import json
 import re
 import logging
 from fastapi import APIRouter, Request, Query, HTTPException
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +221,175 @@ async def query_table(
     total = count_row["cnt"] if count_row else 0
 
     return {"code": 0, "message": "success", "data": result, "total": total}
+
+class BatchInsertRequest(BaseModel):
+    rows: list[dict]
+
+
+class UpdateRowRequest(BaseModel):
+    data: dict
+
+
+@router.put("/{table_name}/rows/{id_column}/{id_value}")
+async def update_row(
+    request: Request,
+    table_name: str,
+    id_column: str,
+    id_value: str,
+    body: UpdateRowRequest,
+):
+    """
+    Update a single row in a business table by ID column.
+
+    Path params:
+        table_name: Target table
+        id_column:  Column name used as identifier (e.g. "id", "steam_id")
+        id_value:   The value of the id column for the target row
+
+    Body:
+        {"data": {"column1": "new_value", "column2": 123}}
+    """
+    _validate_table_name(table_name)
+    db = _get_db(request)
+    valid_columns = _get_table_columns(request, table_name)
+
+    if id_column not in valid_columns:
+        raise HTTPException(status_code=400, detail=f"Unknown id column: {id_column}")
+
+    data = body.data
+    if not data:
+        raise HTTPException(status_code=400, detail="No data provided")
+
+    # Validate all columns in data
+    for col in data:
+        if col not in valid_columns:
+            raise HTTPException(status_code=400, detail=f"Unknown column: {col}")
+
+    # Build SET clause
+    set_clause = ", ".join([f"{col} = ?" for col in data])
+    values = list(data.values()) + [id_value]
+
+    sql = f"UPDATE {table_name} SET {set_clause} WHERE {id_column} = ?"
+    db.conn.execute(sql, values)
+    db.conn.commit()
+
+    # Type-cast id_value for response
+    try:
+        typed_id = int(id_value)
+    except ValueError:
+        try:
+            typed_id = float(id_value)
+        except ValueError:
+            typed_id = id_value
+
+    # Re-read the row
+    row = db.conn.execute(
+        f"SELECT * FROM {table_name} WHERE {id_column} = ?", (id_value,)
+    ).fetchone()
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": dict(row) if row else {"updated": True, id_column: typed_id},
+    }
+
+
+@router.delete("/{table_name}/rows/{id_column}/{id_value}")
+async def delete_row(
+    request: Request,
+    table_name: str,
+    id_column: str,
+    id_value: str,
+):
+    """
+    Delete a single row from a business table by ID column.
+
+    Path params:
+        table_name: Target table
+        id_column:  Column name used as identifier (e.g. "id")
+        id_value:   The value of the id column for the target row
+    """
+    _validate_table_name(table_name)
+    db = _get_db(request)
+    valid_columns = _get_table_columns(request, table_name)
+
+    if id_column not in valid_columns:
+        raise HTTPException(status_code=400, detail=f"Unknown id column: {id_column}")
+
+    sql = f"DELETE FROM {table_name} WHERE {id_column} = ?"
+    cur = db.conn.execute(sql, (id_value,))
+    db.conn.commit()
+
+    deleted_count = cur.rowcount
+    return {
+        "code": 0,
+        "message": f"已删除 {deleted_count} 行",
+        "data": {"deleted": deleted_count, id_column: id_value},
+    }
+
+
+@router.post("/{table_name}/rows/batch")
+async def batch_insert(
+    request: Request,
+    table_name: str,
+    body: BatchInsertRequest,
+):
+    """
+    Batch insert rows into a business table (UPSERT).
+
+    Body:
+        {"rows": [{"col1": "v1", "col2": 123}, {"col1": "v2", "col2": 456}]}
+    """
+    _validate_table_name(table_name)
+    db = _get_db(request)
+    valid_columns = _get_table_columns(request, table_name)
+
+    rows = body.rows
+    if not rows:
+        raise HTTPException(status_code=400, detail="No rows provided")
+
+    # Validate columns in first row; subsequent rows should be consistent
+    columns = list(rows[0].keys())
+    for col in columns:
+        if col not in valid_columns:
+            raise HTTPException(status_code=400, detail=f"Unknown column: {col}")
+
+    col_names = ", ".join(columns)
+    placeholders = ", ".join(["?" for _ in columns])
+
+    # Build SET clause for ON CONFLICT (exclude 'id' if present)
+    update_cols = [c for c in columns if c != "id"]
+    set_clause = ", ".join([f"{c}=excluded.{c}" for c in update_cols])
+
+    sql = (
+        f"INSERT INTO {table_name} ({col_names}) "
+        f"VALUES ({placeholders}) "
+        f"ON CONFLICT DO UPDATE SET {set_clause}"
+    )
+
+    before_count = db.conn.execute(
+        f"SELECT COUNT(*) FROM {table_name}"
+    ).fetchone()[0]
+
+    with db.conn:
+        for row in rows:
+            values = [row.get(c) for c in columns]
+            db.conn.execute(sql, values)
+
+    after_count = db.conn.execute(
+        f"SELECT COUNT(*) FROM {table_name}"
+    ).fetchone()[0]
+
+    delta = after_count - before_count
+    return {
+        "code": 0,
+        "message": f"批量插入完成: 新增 {max(0, delta)}, 更新 {max(0, len(rows) - delta)}",
+        "data": {
+            "inserted": max(0, delta),
+            "updated": max(0, len(rows) - delta),
+            "total": len(rows),
+        },
+    }
 
 
 @router.get("/{table_name}/count")

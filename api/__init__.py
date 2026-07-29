@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 logger = logging.getLogger("api")
 
 
-def create_app(config_dir: str = None, db_path: str = None) -> FastAPI:
+def create_app(config_dir: str = None, db_path: str = None, scheduler=None) -> FastAPI:
     """创建 FastAPI 应用实例并挂载路由。"""
 
     # 从环境变量读取配置（uvicorn --factory 模式下无参数传入）
@@ -35,6 +35,7 @@ def create_app(config_dir: str = None, db_path: str = None) -> FastAPI:
     # 将配置注入到 app.state，供路由使用
     app.state.config_dir = config_dir
     app.state.db_path = db_path
+    app.state.scheduler = scheduler  # 热加载用，纯 API 模式（--api 无调度器）为 None
 
     # 跨域访问（CORS）
     app.add_middleware(

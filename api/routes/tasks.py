@@ -2,7 +2,10 @@
 
 import time
 import logging
+import yaml
+import os
 from fastapi import APIRouter, Request, HTTPException
+from pydantic import BaseModel
 from crawler.engine import CrawlerEngine
 from task_manager.loader import TaskLoader
 
@@ -42,12 +45,30 @@ async def list_tasks(request: Request):
 
 @router.get("/{task_name}")
 async def get_task(request: Request, task_name: str):
-    """Get a single task config."""
+    """Get a single task config, including raw config_yaml from DB."""
+    db = _get_db(request)
+    row = db.conn.execute(
+        "SELECT config_yaml FROM crawl_tasks WHERE task_name = ?", (task_name,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Task not found: {task_name}")
+
+    # Also load parsed task config
     tasks = _load_tasks(request)
+    parsed = None
     for t in tasks:
         if t.get("name") == task_name:
-            return {"code": 0, "message": "success", "data": t}
-    raise HTTPException(status_code=404, detail=f"Task not found: {task_name}")
+            parsed = t
+            break
+
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            **(parsed or {}),
+            "config_yaml": row["config_yaml"],
+        },
+    }
 
 
 @router.post("/{task_name}/run")
@@ -65,7 +86,16 @@ async def trigger_run(request: Request, task_name: str):
     if target is None:
         raise HTTPException(status_code=404, detail=f"Task not found: {task_name}")
 
-    task_id = target.get("_task_id", 0)
+    # 从数据库获取真实 task_id，避免 FOREIGN KEY 约束失败
+    task_row = db.conn.execute(
+        "SELECT id FROM crawl_tasks WHERE task_name = ?", (task_name,)
+    ).fetchone()
+    if task_row is None:
+        # 任务 YAML 存在但未注册到 DB，先注册
+        from task_manager.loader import TaskLoader
+        loader = TaskLoader(_get_config_dir(request), db)
+        target = loader._register_task(target)
+    task_id = task_row["id"] if task_row else target.get("_task_id", 0)
     log_id = db.start_crawl_log(task_id)
 
     start = time.time()
@@ -93,3 +123,166 @@ async def trigger_run(request: Request, task_name: str):
         duration_ms = int((time.time() - start) * 1000)
         db.fail_crawl_log(log_id, str(e), duration_ms)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class CreateTaskRequest(BaseModel):
+    name: str
+    config_yaml: str
+
+
+@router.delete("/{task_name}")
+async def delete_task(request: Request, task_name: str):
+    """
+    删除任务：从调度器移除 + 删除 YAML 文件 + 从数据库删除。
+    """
+    config_dir = _get_config_dir(request)
+    db = _get_db(request)
+
+    # 1. 从调度器移除
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        try:
+            scheduler._scheduler.remove_job(task_name)
+        except Exception:
+            pass
+
+    # 2. 删除 YAML 文件
+    deleted_files = []
+    for ext in (".yaml", ".yml"):
+        fp = os.path.join(config_dir, f"{task_name}{ext}")
+        if os.path.exists(fp):
+            os.remove(fp)
+            deleted_files.append(fp)
+
+    # 3. 从数据库删除
+    db.conn.execute("DELETE FROM crawl_tasks WHERE task_name = ?", (task_name,))
+    db.conn.commit()
+
+    return {
+        "code": 0,
+        "message": f"任务 '{task_name}' 已删除",
+        "data": {"name": task_name, "files_deleted": len(deleted_files)},
+    }
+
+
+@router.put("/{task_name}")
+async def update_task(request: Request, task_name: str, body: CreateTaskRequest):
+    """
+    更新任务配置：覆写 YAML 文件 + 重新注册到数据库 + 热重载到调度器。
+    """
+    yaml_content = body.config_yaml.strip()
+    if not yaml_content:
+        raise HTTPException(status_code=400, detail="YAML 配置不能为空")
+
+    try:
+        task_config = yaml.safe_load(yaml_content)
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML 解析失败: {e}")
+
+    if not isinstance(task_config, dict):
+        raise HTTPException(status_code=400, detail="YAML 顶层必须是一个字典（任务配置）")
+
+    task_config["name"] = task_name
+
+    if "schedule" not in task_config:
+        raise HTTPException(status_code=400, detail="YAML 配置必须包含 schedule 字段")
+
+    config_dir = _get_config_dir(request)
+    db = _get_db(request)
+
+    # 1. 覆写 YAML 文件
+    filepath = os.path.join(config_dir, f"{task_name}.yaml")
+    with open(filepath, "w", encoding="utf-8") as f:
+        yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
+
+    # 2. 重新注册到数据库（upsert）
+    from task_manager.loader import TaskLoader
+    loader = TaskLoader(config_dir, db)
+    processed = loader._register_task(task_config)
+
+    # 3. 热重载到调度器
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        try:
+            scheduler._scheduler.remove_job(task_name)
+        except Exception:
+            pass
+        scheduler._register_job(processed)
+        scheduler._tasks[task_name] = processed
+
+    return {
+        "code": 0,
+        "message": f"任务 '{task_name}' 已更新" + ("并热重载" if scheduler else ""),
+        "data": {
+            "name": task_name,
+            "type": processed.get("type", "web"),
+            "schedule": processed.get("schedule"),
+            "target_table": processed.get("target_table"),
+        },
+    }
+
+
+@router.post("")
+async def create_task(request: Request, body: CreateTaskRequest):
+    """
+    创建新任务：写入 YAML 文件 + 注册到数据库 + 热加载到调度器。
+    """
+    name = body.name.strip()
+    yaml_content = body.config_yaml.strip()
+
+    if not name:
+        raise HTTPException(status_code=400, detail="任务名称不能为空")
+    if not yaml_content:
+        raise HTTPException(status_code=400, detail="YAML 配置不能为空")
+
+    try:
+        task_config = yaml.safe_load(yaml_content)
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML 解析失败: {e}")
+
+    if not isinstance(task_config, dict):
+        raise HTTPException(status_code=400, detail="YAML 顶层必须是一个字典（任务配置）")
+
+    task_config["name"] = name
+
+    if "schedule" not in task_config:
+        raise HTTPException(status_code=400, detail="YAML 配置必须包含 schedule 字段")
+
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        result = scheduler.add_job(task_config)
+        if result is None:
+            raise HTTPException(status_code=500, detail="任务注册失败")
+        return {
+            "code": 0,
+            "message": f"任务 '{name}' 创建成功并已热加载到调度器",
+            "data": {
+                "name": name,
+                "type": result.get("type", "web"),
+                "schedule": result.get("schedule"),
+                "target_table": result.get("target_table"),
+            },
+        }
+
+    # 纯 API 模式
+    config_dir = _get_config_dir(request)
+    db = _get_db(request)
+
+    filepath = os.path.join(config_dir, f"{name}.yaml")
+    with open(filepath, "w", encoding="utf-8") as f:
+        yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
+
+    from task_manager.loader import TaskLoader
+    loader = TaskLoader(config_dir, db)
+    processed = loader._register_task(task_config)
+
+    return {
+        "code": 0,
+        "message": f"任务 '{name}' 创建成功（重启调度器后生效）",
+        "data": {
+            "name": name,
+            "type": processed.get("type", "web"),
+            "schedule": processed.get("schedule"),
+            "target_table": processed.get("target_table"),
+        },
+    }

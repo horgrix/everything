@@ -30,7 +30,7 @@
             <label class="form-label small">业务表</label>
             <select class="form-select" id="tableSelect" onchange="onTableChange()"><option value="">请选择...</option></select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label small">视图模式</label>
             <div class="btn-group w-100" role="group">
                 <input type="radio" class="btn-check" name="viewMode" id="viewTable" value="table" checked onchange="onViewChange()">
@@ -49,9 +49,12 @@
                 <div class="row g-2">
                     <div class="col-md-3"><label class="form-label small">返回字段</label><input class="form-control" id="qFields" placeholder="留空=全部，例: steam_id,peak_players"></div>
                     <div class="col-md-3"><label class="form-label small">排序</label><input class="form-control" id="qOrder" placeholder="例: peak_players DESC"></div>
-                    <div class="col-md-3"><label class="form-label small">筛选 (JSON)</label><input class="form-control" id="qWhere" placeholder="[{&quot;col&quot;:&quot;steam_id&quot;,&quot;op&quot;:&quot;=&quot;,&quot;value&quot;:1}]" title="格式: [{&quot;col&quot;:&quot;字段&quot;,&quot;op&quot;:&quot;运算符&quot;,&quot;value&quot;:值}] 运算符: = != &gt; &lt; &gt;= &lt;= IN NOT IN LIKE BETWEEN IS NULL"></div>
-                    <div class="col-md-2"><label class="form-label small">每页</label><select class="form-select" id="qLimit"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select></div>
-                    <div class="col-md-2 pt-md-4"><button class="btn btn-primary w-100" onclick="loadData()">查询</button></div>
+                    <div class="col-md-3"><label class="form-label small">筛选 (JSON)</label><input class="form-control" id="qWhere" placeholder="[{"col":"steam_id","op":"=","value":1}]" title="格式: [{"col":"字段","op":"运算符","value":值}] 运算符: = != > < >= <= IN NOT IN LIKE BETWEEN IS NULL"></div>
+                    <div class="col-md-1"><label class="form-label small">每页</label><select class="form-select" id="qLimit"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select></div>
+                </div>
+                <div class="mt-2">
+                    <button class="btn btn-primary" onclick="loadData()"><i class="bi bi-search me-1"></i>查询</button>
+                    <button class="btn btn-outline-success ms-2" onclick="showBatchInsertModal()" id="batchInsertBtn" disabled title="批量插入数据"><i class="bi bi-plus-square me-1"></i>批量插入</button>
                 </div>
             </div>
         </div>
@@ -88,12 +91,60 @@
     </div>
 </div>
 
+<!-- 编辑行弹窗 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i>编辑数据行</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><small class="text-muted">使用列 <code id="editIdCol"></code> = <code id="editIdVal"></code> 定位</small></div>
+                <div id="editFields"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveEdit()" id="saveEditBtn"><i class="bi bi-check-lg"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批量插入弹窗 -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header"><h5 class="modal-title"><i class="bi bi-plus-square me-2"></i>批量插入数据</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="mb-2"><small class="text-muted">目标表：<code id="batchTableName"></code> &nbsp; 每行一个 JSON 对象，支持 UPSERT</small></div>
+                <textarea class="form-control font-monospace" id="batchJson" rows="12" placeholder='[&#10;  {"col1": "value1", "col2": 123},&#10;  {"col1": "value2", "col2": 456}&#10;]'></textarea>
+                <div class="form-text mt-1">格式：JSON 数组，每个元素是一个与表列匹配的对象。使用 ON CONFLICT DO UPDATE（UPSERT）。</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-success" onclick="doBatchInsert()" id="batchBtn"><i class="bi bi-cloud-upload"></i> 提交</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="liveToast" class="toast" role="alert"><div class="toast-body" id="toastMsg"></div></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1/dist/apexcharts.min.js"></script>
-<script src="/static/js/api.js"></script>
+<script src="/static/js/api.js?v=3"></script>
 <script src="/static/js/charts.js"></script>
 <script>
 let currentTable = '', currentPage = 0, chartInstance = null;
+let editModal = null, batchModal = null;
+let _colCache = null;   // column info cache for current table
+let _currentRows = [];   // current page row data for edit without JSON-inlining
+
+document.addEventListener('DOMContentLoaded', () => {
+    editModal = new bootstrap.Modal('#editModal');
+    batchModal = new bootstrap.Modal('#batchModal');
+});
 
 (async () => {
     try {
@@ -106,6 +157,8 @@ let currentTable = '', currentPage = 0, chartInstance = null;
 function onTableChange() {
     currentTable = document.getElementById('tableSelect').value;
     currentPage = 0;
+    document.getElementById('batchInsertBtn').disabled = !currentTable;
+    _colCache = null;
     if (currentTable) loadData();
 }
 
@@ -116,24 +169,30 @@ function onViewChange() {
     if (mode === 'chart' && currentTable) loadColumns();
 }
 
-async function loadColumns() {
-    if (!currentTable) return;
+async function getColumns() {
+    if (_colCache) return _colCache;
+    if (!currentTable) return [];
     try {
         const res = await apiGet(`/data/${currentTable}/columns`);
-        const cols = res.data;
-        const xSel = document.getElementById('chXCol'), ySel = document.getElementById('chYCol'), sSel = document.getElementById('chSeriesCol');
-        // Preserve selected values
-        const xVal = xSel.value, yVal = ySel.value, sVal = sSel.value;
-        const numericCols = cols.filter(c => ['INTEGER','REAL','FLOAT','DOUBLE','NUMERIC'].includes((c.type||'').toUpperCase()) || c.name.endsWith('_id'));
-        const allOpts = cols.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${c.type||'TEXT'})</option>`).join('');
-        const numOpts = numericCols.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
-        xSel.innerHTML = '<option value="">请选择...</option>' + allOpts;
-        ySel.innerHTML = '<option value="">请选择...</option>' + numOpts;
-        sSel.innerHTML = '<option value="">无（单线）</option>' + allOpts;
-        if (xVal && cols.some(c => c.name === xVal)) xSel.value = xVal;
-        if (yVal && numericCols.some(c => c.name === yVal)) ySel.value = yVal;
-        if (sVal && cols.some(c => c.name === sVal)) sSel.value = sVal;
-    } catch(e) { console.error(e); }
+        _colCache = res.data;
+        return res.data;
+    } catch(e) { toast(e.message, 'danger'); return []; }
+}
+
+async function loadColumns() {
+    if (!currentTable) return;
+    const cols = await getColumns();
+    const xSel = document.getElementById('chXCol'), ySel = document.getElementById('chYCol'), sSel = document.getElementById('chSeriesCol');
+    const xVal = xSel.value, yVal = ySel.value, sVal = sSel.value;
+    const numericCols = cols.filter(c => ['INTEGER','REAL','FLOAT','DOUBLE','NUMERIC'].includes((c.type||'').toUpperCase()) || c.name.endsWith('_id'));
+    const allOpts = cols.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${c.type||'TEXT'})</option>`).join('');
+    const numOpts = numericCols.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+    xSel.innerHTML = '<option value="">请选择...</option>' + allOpts;
+    ySel.innerHTML = '<option value="">请选择...</option>' + numOpts;
+    sSel.innerHTML = '<option value="">无（单线）</option>' + allOpts;
+    if (xVal && cols.some(c => c.name === xVal)) xSel.value = xVal;
+    if (yVal && numericCols.some(c => c.name === yVal)) ySel.value = yVal;
+    if (sVal && cols.some(c => c.name === sVal)) sSel.value = sVal;
 }
 
 async function loadData(page = 0) {
@@ -158,13 +217,30 @@ async function loadData(page = 0) {
 
 function renderDataTable(data, total, limit, page) {
     const thead = document.getElementById('dataThead'), tbody = document.getElementById('dataTbody');
+    _currentRows = data;  // cache for edit
     if (data.length === 0) {
         thead.innerHTML = ''; tbody.innerHTML = '<tr><td class="text-muted text-center">无数据</td></tr>';
         return;
     }
     const keys = Object.keys(data[0]);
-    thead.innerHTML = '<tr>' + keys.map(k => `<th>${esc(k)}</th>`).join('') + '</tr>';
-    tbody.innerHTML = data.map(row => '<tr>' + keys.map(k => `<td class="small">${esc(String(row[k] ?? ''))}</td>`).join('') + '</tr>').join('');
+    thead.innerHTML = '<tr>' + keys.map(k => `<th>${esc(k)}</th>`).join('') + '<th style="width:90px">操作</th></tr>';
+    tbody.innerHTML = data.map((row, idx) => '<tr>' +
+        keys.map(k => `<td class="small">${esc(String(row[k] ?? ''))}</td>`).join('') +
+        `<td class="text-nowrap"><button class="btn btn-sm btn-outline-secondary edit-row-btn me-1" data-row-idx="${idx}" title="编辑此行"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger delete-row-btn" data-row-idx="${idx}" title="删除此行"><i class="bi bi-trash"></i></button></td>` +
+        '</tr>').join('');
+    // Attach click handlers after render (avoids JSON-inlining issues)
+    tbody.querySelectorAll('.edit-row-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.rowIdx);
+            showEditModal(_currentRows[idx]);
+        });
+    });
+    tbody.querySelectorAll('.delete-row-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.rowIdx);
+            deleteRow(_currentRows[idx]);
+        });
+    });
 }
 
 function renderPagination(total, limit, page, containerId, fn) {
@@ -178,6 +254,125 @@ function renderPagination(total, limit, page, containerId, fn) {
     ul.innerHTML = html;
 }
 
+// ================================================================
+// 编辑行
+// ================================================================
+function showEditModal(rowData) {
+    const cols = _colCache || [];
+    // Use 'id' as default id column if available, else first column
+    const idCol = cols.find(c => c.name === 'id') ? 'id' : (Object.keys(rowData)[0] || 'id');
+    const idVal = rowData[idCol] ?? '';
+
+    document.getElementById('editIdCol').textContent = idCol;
+    document.getElementById('editIdVal').textContent = idVal;
+
+    const container = document.getElementById('editFields');
+    const editableKeys = Object.keys(rowData).filter(k => k !== idCol);
+
+    container.innerHTML = editableKeys.map(k => {
+        const isNum = cols.some(c => c.name === k && ['INTEGER','REAL','FLOAT','DOUBLE','NUMERIC'].includes((c.type||'').toUpperCase()));
+        return `<div class="mb-2 row align-items-center">
+            <label class="col-sm-3 col-form-label col-form-label-sm text-truncate" title="${esc(k)}">${esc(k)}</label>
+            <div class="col-sm-9">
+                <input type="${isNum ? 'number' : 'text'}" class="form-control form-control-sm" data-col="${esc(k)}" value="${esc(String(rowData[k] ?? ''))}" ${isNum ? 'step="any"' : ''}>
+            </div>
+        </div>`;
+    }).join('');
+
+    // Store id info for save
+    container.dataset.idCol = idCol;
+    container.dataset.idVal = idVal;
+
+    editModal.show();
+}
+
+async function saveEdit() {
+    const container = document.getElementById('editFields');
+    const idCol = container.dataset.idCol;
+    const idVal = container.dataset.idVal;
+    const btn = document.getElementById('saveEditBtn');
+
+    const data = {};
+    container.querySelectorAll('input[data-col]').forEach(input => {
+        data[input.dataset.col] = input.value;
+    });
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> 保存中...';
+
+    try {
+        await apiPut(`/data/${currentTable}/rows/${encodeURIComponent(idCol)}/${encodeURIComponent(idVal)}`, { data });
+        toast('数据更新成功', 'success');
+        editModal.hide();
+        loadData(currentPage);
+    } catch(e) {
+        toast('更新失败: ' + e.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+    }
+}
+
+async function deleteRow(rowData) {
+    const cols = _colCache || [];
+    const idCol = cols.find(c => c.name === 'id') ? 'id' : (Object.keys(rowData)[0] || 'id');
+    const idVal = rowData[idCol] ?? '';
+
+    if (!confirm(`确认删除行？\n${idCol} = ${idVal}\n此操作不可撤销。`)) return;
+
+    try {
+        await apiDelete(`/data/${currentTable}/rows/${encodeURIComponent(idCol)}/${encodeURIComponent(idVal)}`);
+        toast('数据已删除', 'success');
+        loadData(currentPage);
+    } catch(e) {
+        toast('删除失败: ' + e.message, 'danger');
+    }
+}
+
+// ================================================================
+// 批量插入
+// ================================================================
+function showBatchInsertModal() {
+    if (!currentTable) return;
+    document.getElementById('batchTableName').textContent = currentTable;
+    document.getElementById('batchJson').value = '';
+    batchModal.show();
+}
+
+async function doBatchInsert() {
+    const btn = document.getElementById('batchBtn');
+    const raw = document.getElementById('batchJson').value.trim();
+    if (!raw) { toast('请输入 JSON 数据', 'warning'); return; }
+
+    let rows;
+    try {
+        rows = JSON.parse(raw);
+    } catch(e) {
+        toast('JSON 格式错误: ' + e.message, 'danger');
+        return;
+    }
+    if (!Array.isArray(rows)) { toast('必须是 JSON 数组', 'warning'); return; }
+    if (rows.length === 0) { toast('数组不能为空', 'warning'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> 提交中...';
+
+    try {
+        const res = await apiPost(`/data/${currentTable}/rows/batch`, { rows });
+        toast(res.message, 'success');
+        batchModal.hide();
+        loadData(currentPage);
+    } catch(e) {
+        toast('批量插入失败: ' + e.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-upload"></i> 提交';
+    }
+}
+
+// ================================================================
+// 图表
+// ================================================================
 async function loadChart() {
     if (!currentTable) return;
     const xCol = document.getElementById('chXCol').value;
@@ -243,6 +438,14 @@ async function loadChart() {
     } catch(e) { alert('绘图失败: ' + e.message); }
 }
 
+// ================================================================
+// 工具函数
+// ================================================================
+function toast(msg, type) {
+    const el = document.getElementById('toastMsg');
+    el.textContent = msg; el.className = `toast-body text-${type}`;
+    new bootstrap.Toast('#liveToast').show();
+}
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 </script>
 </body>

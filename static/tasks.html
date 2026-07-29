@@ -22,12 +22,17 @@
 </nav>
 
 <div class="container-fluid px-4 py-4 page-content">
-    <h4 class="mb-4 fw-bold">任务管理</h4>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="fw-bold mb-0">任务管理</h4>
+        <button class="btn btn-primary" onclick="showCreateModal()">
+            <i class="bi bi-plus-lg"></i> 创建任务
+        </button>
+    </div>
 
     <div class="table-responsive card">
         <div class="card-body">
         <table class="table table-hover mb-0">
-            <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:160px">操作</th></tr></thead>
+            <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
             <tbody id="taskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
         </table>
         </div>
@@ -42,6 +47,42 @@
             </div>
         </div>
     </div>
+
+    <!-- 创建/编辑任务弹窗 -->
+    <div class="modal fade" id="createModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createModalTitle"><i class="bi bi-plus-circle me-2"></i>创建任务</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3" id="taskNameGroup">
+                        <label class="form-label fw-semibold">任务名称 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="taskName" placeholder="英文/中文均可，用作唯一标识和配置文件名">
+                        <div class="form-text">例如：steam_top_sellers_daily 或 蒸汽畅销榜每日采集</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label class="form-label fw-semibold mb-0">YAML 配置 <span class="text-danger">*</span></label>
+                            <button class="btn btn-sm btn-outline-secondary" id="loadTemplateBtn" onclick="loadTemplate()">
+                                <i class="bi bi-file-earmark-code"></i> 加载模板
+                            </button>
+                        </div>
+                        <textarea class="form-control font-monospace" id="taskYaml" rows="14"
+                            placeholder="name: my_task&#10;type: web&#10;url: https://example.com/api&#10;schedule: '0 * * * *'&#10;target_table: my_table&#10;parser:&#10;  type: json&#10;  fields:&#10;    - name: id&#10;      path: id"></textarea>
+                        <div class="form-text">支持完整 YAML 配置语法</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="submitTask()" id="createBtn">
+                        <i class="bi bi-check-lg"></i> 创建
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Toast -->
@@ -50,12 +91,20 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/static/js/api.js"></script>
+<script src="/static/js/api.js?v=3"></script>
 <script>
-(async () => {
+let createModal = null;
+let _editingTaskName = null; // null = create mode, string = edit mode
+
+document.addEventListener('DOMContentLoaded', () => {
+    createModal = new bootstrap.Modal('#createModal');
+    loadTaskList();
+});
+
+async function loadTaskList() {
+    const tbody = document.getElementById('taskList');
     try {
         const res = await apiGet('/tasks');
-        const tbody = document.getElementById('taskList');
         if (res.data.length === 0) {
             tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">暂无任务</td></tr>';
             return;
@@ -63,19 +112,21 @@
         tbody.innerHTML = res.data.map(t => `
             <tr>
                 <td><strong>${esc(t.name)}</strong></td>
-                <td><span class="badge bg-secondary">${t.type}</span></td>
+                <td><span class="badge bg-secondary">${t.type || '-'}</span></td>
                 <td><code>${esc(t.target_table || '-')}</code></td>
                 <td><code>${esc(t.schedule)}</code></td>
-                <td>
-                    <button class="btn btn-sm btn-outline-primary" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-sm btn-outline-success" onclick="triggerRun('${esc(t.name)}')"><i class="bi bi-play-fill"></i></button>
+                <td class="text-nowrap">
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-info me-1" onclick="showEditModal('${esc(t.name)}')" title="编辑配置"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-success me-1" onclick="triggerRun('${esc(t.name)}')"><i class="bi bi-play-fill"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${esc(t.name)}')"><i class="bi bi-trash"></i></button>
                 </td>
             </tr>
         `).join('');
     } catch(e) {
-        document.getElementById('taskList').innerHTML = `<tr><td colspan="5" class="text-danger text-center">加载失败: ${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">加载失败: ${esc(e.message)}</td></tr>`;
     }
-})();
+}
 
 async function viewDetail(name) {
     try {
@@ -91,6 +142,149 @@ async function triggerRun(name) {
         const res = await apiPost(`/tasks/${encodeURIComponent(name)}/run`);
         toast(`任务执行完毕 — 新增 ${res.data.new}, 更新 ${res.data.updated}, 跳过 ${res.data.skipped}`, 'success');
     } catch(e) { toast('执行失败: ' + e.message, 'danger'); }
+}
+
+async function deleteTask(name) {
+    if (!confirm(`确认删除任务 "${name}"？\n此操作会删除 YAML 配置文件和数据库记录，不可撤销。`)) return;
+    try {
+        await apiDelete(`/tasks/${encodeURIComponent(name)}`);
+        toast(`任务 "${name}" 已删除`, 'success');
+        loadTaskList();
+    } catch(e) { toast('删除失败: ' + e.message, 'danger'); }
+}
+
+// ================================================================
+// 创建 / 编辑（共用 Modal）
+// ================================================================
+function showCreateModal() {
+    _editingTaskName = null;
+    document.getElementById('createModalTitle').innerHTML = '<i class="bi bi-plus-circle me-2"></i>创建任务';
+    document.getElementById('taskName').value = '';
+    document.getElementById('taskName').disabled = false;
+    document.getElementById('taskNameGroup').style.display = '';
+    document.getElementById('loadTemplateBtn').style.display = '';
+    document.getElementById('taskYaml').value = '';
+    document.getElementById('createBtn').disabled = false;
+    document.getElementById('createBtn').innerHTML = '<i class="bi bi-check-lg"></i> 创建';
+    createModal.show();
+}
+
+async function showEditModal(name) {
+    try {
+        const res = await apiGet(`/tasks/${encodeURIComponent(name)}`);
+        const yamlStr = res.data.config_yaml || '';
+
+        _editingTaskName = name;
+        document.getElementById('createModalTitle').innerHTML = '<i class="bi bi-pencil-square me-2"></i>编辑任务配置';
+        document.getElementById('taskName').value = name;
+        document.getElementById('taskName').disabled = true;
+        document.getElementById('taskNameGroup').style.display = '';
+        document.getElementById('loadTemplateBtn').style.display = 'none';
+        document.getElementById('taskYaml').value = yamlStr;
+        document.getElementById('createBtn').disabled = false;
+        document.getElementById('createBtn').innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+        createModal.show();
+    } catch(e) { toast('加载配置失败: ' + e.message, 'danger'); }
+}
+
+async function submitTask() {
+    const btn = document.getElementById('createBtn');
+    const nameField = document.getElementById('taskName');
+    const name = nameField.value.trim();
+    const yaml = document.getElementById('taskYaml').value.trim();
+
+    if (!name) { toast('请输入任务名称', 'warning'); return; }
+    if (!yaml) { toast('请输入 YAML 配置', 'warning'); return; }
+
+    btn.disabled = true;
+    const isEdit = _editingTaskName !== null;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> ${isEdit ? '保存中...' : '创建中...'}`;
+
+    try {
+        let res;
+        if (isEdit) {
+            res = await apiPut(`/tasks/${encodeURIComponent(_editingTaskName)}`, { name: _editingTaskName, config_yaml: yaml });
+        } else {
+            res = await apiPost('/tasks', { name, config_yaml: yaml });
+        }
+        toast(res.message, 'success');
+        createModal.hide();
+        loadTaskList();
+    } catch(e) {
+        toast((isEdit ? '更新' : '创建') + '失败: ' + e.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        const isEditNow = _editingTaskName !== null;
+        btn.innerHTML = `<i class="bi bi-check-lg"></i> ${isEditNow ? '保存' : '创建'}`;
+    }
+}
+
+function loadTemplate() {
+    const template = `# 示例任务配置
+name: ""
+type: web
+method: GET
+url: "https://api.example.com/data?date={today}"
+schedule: "0 * * * *"
+target_table: "example_data"
+table_schema:
+  columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: value
+      type: TEXT
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+  indexes:
+    - name: idx_uk_value
+      columns: [value]
+      unique: true
+parser:
+  type: json
+  root_path: "data"
+  fields:
+    - name: value
+      path: "name"
+      strip: true
+`;
+    document.getElementById('taskYaml').value = template;
+}
+
+// Simple dict → YAML serializer (CRLF-safe, avoids heavy lib)
+function jsToYaml(obj, indent = 0) {
+    const pad = '  '.repeat(indent);
+    if (obj === null || obj === undefined) return 'null';
+    if (typeof obj === 'string') {
+        // Quote if contains special chars
+        if (/[:{}[\],&*?|<>"'`@#!]/.test(obj) || obj.includes('\n') || obj === '') {
+            return `"${obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+        }
+        return obj;
+    }
+    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
+    if (Array.isArray(obj)) {
+        if (obj.length === 0) return '[]';
+        return obj.map(v => `${pad}- ${jsToYaml(v, indent + 1).replace(/^\s+/, '')}`).join('\n');
+    }
+    if (typeof obj === 'object') {
+        const keys = Object.keys(obj).filter(k => !k.startsWith('_'));
+        if (keys.length === 0) return '{}';
+        return keys.map(k => {
+            const v = obj[k];
+            if (typeof v === 'string' && v.includes('\n')) {
+                return `${pad}${k}: |\n` + v.split('\n').map(l => `${pad}  ${l}`).join('\n');
+            }
+            if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+                return `${pad}${k}:\n${jsToYaml(v, indent + 1)}`;
+            }
+            if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
+                return `${pad}${k}:\n${v.map(item => jsToYaml(item, indent + 1)).join('\n')}`;
+            }
+            return `${pad}${k}: ${jsToYaml(v, indent)}`;
+        }).join('\n');
+    }
+    return String(obj);
 }
 
 function toast(msg, type) {
