@@ -198,9 +198,20 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
     config_dir = _get_config_dir(request)
     db = _get_db(request)
 
-    trigger_type = task_config.get("trigger_type", "system")
-    if trigger_type == "system" and "schedule" not in task_config:
-        raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
+    # trigger_type 必填
+    trigger_type = task_config.get("trigger_type")
+    if not trigger_type:
+        raise HTTPException(status_code=400, detail="trigger_type 字段必填（system 或 user）")
+    if trigger_type not in ("system", "user"):
+        raise HTTPException(status_code=400, detail=f"无效的 trigger_type: {trigger_type}")
+
+    # schedule 校验
+    if trigger_type == "system":
+        if "schedule" not in task_config or not task_config["schedule"]:
+            raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
+    else:  # user
+        if "schedule" in task_config:
+            raise HTTPException(status_code=400, detail="user 类型任务不允许 schedule 字段")
 
     # 1. 覆写 YAML 文件到对应子目录
     filepath = _task_filepath(config_dir, task_name, trigger_type)
@@ -259,10 +270,20 @@ async def create_task(request: Request, body: CreateTaskRequest):
 
     task_config["name"] = name
 
-    trigger_type = task_config.get("trigger_type", "system")
+    # trigger_type 必填
+    trigger_type = task_config.get("trigger_type")
+    if not trigger_type:
+        raise HTTPException(status_code=400, detail="trigger_type 字段必填（system 或 user）")
+    if trigger_type not in ("system", "user"):
+        raise HTTPException(status_code=400, detail=f"无效的 trigger_type: {trigger_type}")
 
-    if trigger_type == "system" and "schedule" not in task_config:
-        raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
+    # schedule 校验
+    if trigger_type == "system":
+        if "schedule" not in task_config or not task_config["schedule"]:
+            raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
+    else:  # user
+        if "schedule" in task_config:
+            raise HTTPException(status_code=400, detail="user 类型任务不允许 schedule 字段")
 
     config_dir = _get_config_dir(request)
     db = _get_db(request)

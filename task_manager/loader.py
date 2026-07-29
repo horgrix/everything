@@ -84,18 +84,6 @@ class TaskLoader:
             logger.error("任务缺少 name 字段")
             return None
 
-        # target_table 是 outputs 的简写形式，统一包装为 outputs
-        if "target_table" in config:
-            target_table = config.pop("target_table")
-            output = {"target_table": target_table}
-            # 如果顶层有 table_schema/parser 且 outputs 不存在，复制到 output
-            if "outputs" not in config:
-                if "table_schema" in config:
-                    output["table_schema"] = config.pop("table_schema")
-                if "parser" in config:
-                    output["parser"] = config.pop("parser")
-                config["outputs"] = [output]
-
         outputs_config = config.get("outputs", [])
         if not outputs_config:
             logger.error("任务 '%s' 缺少 outputs 字段", name)
@@ -104,14 +92,27 @@ class TaskLoader:
         # 取第一个 output 的 table 作为主表记录
         first_table = outputs_config[0].get("target_table", "unknown")
 
-        # system 类型必须有 schedule
-        schedule = config.get("schedule")
-        if trigger_type == "system" and not schedule:
-            logger.error("任务 '%s' (system_trigger) 缺少 schedule 字段", name)
+        # trigger_type 必填且必须与目录一致
+        trigger_type_in_config = config.get("trigger_type")
+        if not trigger_type_in_config:
+            logger.error("任务 '%s' 缺少 trigger_type 字段 (必填)", name)
             return None
-        schedule = schedule or "-"
+        if trigger_type_in_config != trigger_type:
+            logger.error("任务 '%s' trigger_type='%s' 与目录 '%s' 不匹配",
+                         name, trigger_type_in_config, trigger_type)
+            return None
 
-        trigger_type_in_config = config.get("trigger_type", trigger_type)
+        # schedule 校验
+        schedule = config.get("schedule")
+        if trigger_type_in_config == "system":
+            if not schedule:
+                logger.error("任务 '%s' (system) 缺少 schedule 字段", name)
+                return None
+        else:  # user
+            if "schedule" in config:
+                logger.error("任务 '%s' (user) 不允许 schedule 字段", name)
+                return None
+            schedule = ""  # DB NOT NULL 约束用
 
         # 创建业务表
         for output_config in outputs_config:
