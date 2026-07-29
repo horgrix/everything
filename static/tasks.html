@@ -29,12 +29,29 @@
         </button>
     </div>
 
-    <div class="table-responsive card">
-        <div class="card-body">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
-            <tbody id="taskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
-        </table>
+    <!-- system 任务 -->
+    <div class="mb-4">
+        <h5 class="mb-3"><span class="badge bg-primary me-2">system</span> 系统定时任务</h5>
+        <div class="table-responsive card">
+            <div class="card-body">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
+                <tbody id="systemTaskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- user 任务 -->
+    <div class="mb-4">
+        <h5 class="mb-3"><span class="badge bg-secondary me-2">user</span> 用户手动任务</h5>
+        <div class="table-responsive card">
+            <div class="card-body">
+            <table class="table table-hover mb-0">
+                <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
+                <tbody id="userTaskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
+            </table>
+            </div>
         </div>
     </div>
 
@@ -59,8 +76,7 @@
                 <div class="modal-body">
                     <div class="mb-3" id="taskNameGroup">
                         <label class="form-label fw-semibold">任务名称 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="taskName" placeholder="英文/中文均可，用作唯一标识和配置文件名">
-                        <div class="form-text">例如：steam_top_sellers_daily 或 蒸汽畅销榜每日采集</div>
+                        <input type="text" class="form-control" id="taskName" placeholder="唯一标识和配置文件名">
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -70,8 +86,11 @@
                             </button>
                         </div>
                         <textarea class="form-control font-monospace" id="taskYaml" rows="14"
-                            placeholder="name: my_task&#10;type: web&#10;url: https://example.com/api&#10;schedule: '0 * * * *'&#10;target_table: my_table&#10;parser:&#10;  type: json&#10;  fields:&#10;    - name: id&#10;      path: id"></textarea>
-                        <div class="form-text">支持完整 YAML 配置语法</div>
+                            placeholder="name: my_task&#10;trigger_type: system&#10;type: web&#10;schedule: '0 * * * *'&#10;url: https://..."></textarea>
+                        <div class="form-text mt-1">
+                            在 YAML 顶层添加 <code>trigger_type: user</code> 创建手动任务（schedule 非必填）。
+                            默认 <code>trigger_type: system</code>。
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -94,7 +113,7 @@
 <script src="/static/js/api.js?v=3"></script>
 <script>
 let createModal = null;
-let _editingTaskName = null; // null = create mode, string = edit mode
+let _editingTaskName = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     createModal = new bootstrap.Modal('#createModal');
@@ -102,30 +121,38 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadTaskList() {
-    const tbody = document.getElementById('taskList');
     try {
         const res = await apiGet('/tasks');
-        if (res.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">暂无任务</td></tr>';
-            return;
-        }
-        tbody.innerHTML = res.data.map(t => `
-            <tr>
-                <td><strong>${esc(t.name)}</strong></td>
-                <td><span class="badge bg-secondary">${t.type || '-'}</span></td>
-                <td><code>${esc(t.target_table || '-')}</code></td>
-                <td><code>${esc(t.schedule)}</code></td>
-                <td class="text-nowrap">
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-sm btn-outline-info me-1" onclick="showEditModal('${esc(t.name)}')" title="编辑配置"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-success me-1" onclick="triggerRun('${esc(t.name)}')"><i class="bi bi-play-fill"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${esc(t.name)}')"><i class="bi bi-trash"></i></button>
-                </td>
-            </tr>
-        `).join('');
+        const systemTasks = res.data.filter(t => t.trigger_type === 'system');
+        const userTasks = res.data.filter(t => t.trigger_type === 'user');
+        renderTable('systemTaskList', systemTasks);
+        renderTable('userTaskList', userTasks);
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-danger text-center">加载失败: ${esc(e.message)}</td></tr>`;
+        document.getElementById('systemTaskList').innerHTML = `<tr><td colspan="5" class="text-danger text-center">加载失败: ${esc(e.message)}</td></tr>`;
+        document.getElementById('userTaskList').innerHTML = '';
     }
+}
+
+function renderTable(tbodyId, tasks) {
+    const tbody = document.getElementById(tbodyId);
+    if (tasks.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">暂无任务</td></tr>';
+        return;
+    }
+    tbody.innerHTML = tasks.map(t => `
+        <tr>
+            <td><strong>${esc(t.name)}</strong></td>
+            <td><span class="badge bg-secondary">${t.type || '-'}</span></td>
+            <td><code>${esc(t.target_table || '-')}</code></td>
+            <td><code>${esc(t.schedule || '-')}</code></td>
+            <td class="text-nowrap">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>
+                <button class="btn btn-sm btn-outline-info me-1" onclick="showEditModal('${esc(t.name)}')" title="编辑配置"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-success me-1" onclick="triggerRun('${esc(t.name)}')"><i class="bi bi-play-fill"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${esc(t.name)}')"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>
+    `).join('');
 }
 
 async function viewDetail(name) {
@@ -220,8 +247,9 @@ async function submitTask() {
 }
 
 function loadTemplate() {
-    const template = `# 示例任务配置
+    const template = `# system 定时任务模板（添加 trigger_type: user 则为手动任务）
 name: ""
+trigger_type: system
 type: web
 method: GET
 url: "https://api.example.com/data?date={today}"
@@ -249,42 +277,6 @@ parser:
       strip: true
 `;
     document.getElementById('taskYaml').value = template;
-}
-
-// Simple dict → YAML serializer (CRLF-safe, avoids heavy lib)
-function jsToYaml(obj, indent = 0) {
-    const pad = '  '.repeat(indent);
-    if (obj === null || obj === undefined) return 'null';
-    if (typeof obj === 'string') {
-        // Quote if contains special chars
-        if (/[:{}[\],&*?|<>"'`@#!]/.test(obj) || obj.includes('\n') || obj === '') {
-            return `"${obj.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-        }
-        return obj;
-    }
-    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
-    if (Array.isArray(obj)) {
-        if (obj.length === 0) return '[]';
-        return obj.map(v => `${pad}- ${jsToYaml(v, indent + 1).replace(/^\s+/, '')}`).join('\n');
-    }
-    if (typeof obj === 'object') {
-        const keys = Object.keys(obj).filter(k => !k.startsWith('_'));
-        if (keys.length === 0) return '{}';
-        return keys.map(k => {
-            const v = obj[k];
-            if (typeof v === 'string' && v.includes('\n')) {
-                return `${pad}${k}: |\n` + v.split('\n').map(l => `${pad}  ${l}`).join('\n');
-            }
-            if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-                return `${pad}${k}:\n${jsToYaml(v, indent + 1)}`;
-            }
-            if (Array.isArray(v) && v.length > 0 && typeof v[0] === 'object') {
-                return `${pad}${k}:\n${v.map(item => jsToYaml(item, indent + 1)).join('\n')}`;
-            }
-            return `${pad}${k}: ${jsToYaml(v, indent)}`;
-        }).join('\n');
-    }
-    return String(obj);
 }
 
 function toast(msg, type) {

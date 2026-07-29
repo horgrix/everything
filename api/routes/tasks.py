@@ -26,6 +26,11 @@ def _load_tasks(request: Request) -> list[dict]:
     loader = TaskLoader(_get_config_dir(request), _get_db(request))
     return loader.load_all()
 
+def _task_filepath(config_dir: str, task_name: str, trigger_type: str = "system") -> str:
+    """根据 trigger_type 确定 YAML 文件存放路径"""
+    sub = "system_trigger" if trigger_type == "system" else "user_trigger"
+    return os.path.join(config_dir, sub, f"{task_name}.yaml")
+
 
 @router.get("")
 async def list_tasks(request: Request):
@@ -38,6 +43,7 @@ async def list_tasks(request: Request):
             "type": t.get("type"),
             "schedule": t.get("schedule"),
             "target_table": t.get("target_table"),
+            "trigger_type": t.get("_trigger_type", "system"),
             "enabled": t.get("enabled", True),
         })
     return {"code": 0, "message": "success", "data": result}
@@ -91,7 +97,6 @@ async def trigger_run(request: Request, task_name: str):
         "SELECT id FROM crawl_tasks WHERE task_name = ?", (task_name,)
     ).fetchone()
     if task_row is None:
-        # 任务 YAML 存在但未注册到 DB，先注册
         from task_manager.loader import TaskLoader
         loader = TaskLoader(_get_config_dir(request), db)
         target = loader._register_task(target)
@@ -138,6 +143,12 @@ async def delete_task(request: Request, task_name: str):
     config_dir = _get_config_dir(request)
     db = _get_db(request)
 
+    # 获取 trigger_type 用于定位文件
+    task_row = db.conn.execute(
+        "SELECT trigger_type FROM crawl_tasks WHERE task_name = ?", (task_name,)
+    ).fetchone()
+    trigger_type = task_row["trigger_type"] if task_row else "system"
+
     # 1. 从调度器移除
     scheduler = getattr(request.app.state, "scheduler", None)
     if scheduler:
@@ -146,10 +157,16 @@ async def delete_task(request: Request, task_name: str):
         except Exception:
             pass
 
-    # 2. 删除 YAML 文件
+    # 2. 删除 YAML 文件（子目录 + 根目录兼容）
     deleted_files = []
-    for ext in (".yaml", ".yml"):
-        fp = os.path.join(config_dir, f"{task_name}{ext}")
+    search_paths = [os.path.join(config_dir, f"{task_name}.yaml"),
+                    os.path.join(config_dir, f"{task_name}.yml")]
+    for sub in ("system_trigger", "user_trigger"):
+        if os.path.isdir(os.path.join(config_dir, sub)):
+            search_paths.append(os.path.join(config_dir, sub, f"{task_name}.yaml"))
+            search_paths.append(os.path.join(config_dir, sub, f"{task_name}.yml"))
+
+    for fp in search_paths:
         if os.path.exists(fp):
             os.remove(fp)
             deleted_files.append(fp)
@@ -184,25 +201,27 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
 
     task_config["name"] = task_name
 
-    if "schedule" not in task_config:
-        raise HTTPException(status_code=400, detail="YAML 配置必须包含 schedule 字段")
-
     config_dir = _get_config_dir(request)
     db = _get_db(request)
 
-    # 1. 覆写 YAML 文件
-    filepath = os.path.join(config_dir, f"{task_name}.yaml")
+    trigger_type = task_config.get("trigger_type", "system")
+    if trigger_type == "system" and "schedule" not in task_config:
+        raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
+
+    # 1. 覆写 YAML 文件到对应子目录
+    filepath = _task_filepath(config_dir, task_name, trigger_type)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
 
     # 2. 重新注册到数据库（upsert）
     from task_manager.loader import TaskLoader
     loader = TaskLoader(config_dir, db)
-    processed = loader._register_task(task_config)
+    processed = loader._register_task(task_config, trigger_type)
 
-    # 3. 热重载到调度器
+    # 3. 热重载到调度器（仅 system 类型）
     scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler:
+    if scheduler and trigger_type == "system":
         try:
             scheduler._scheduler.remove_job(task_name)
         except Exception:
@@ -212,11 +231,12 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
 
     return {
         "code": 0,
-        "message": f"任务 '{task_name}' 已更新" + ("并热重载" if scheduler else ""),
+        "message": f"任务 '{task_name}' 已更新" + ("并热重载" if scheduler and trigger_type == "system" else ""),
         "data": {
             "name": task_name,
             "type": processed.get("type", "web"),
             "schedule": processed.get("schedule"),
+            "trigger_type": trigger_type,
             "target_table": processed.get("target_table"),
         },
     }
@@ -225,7 +245,7 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
 @router.post("")
 async def create_task(request: Request, body: CreateTaskRequest):
     """
-    创建新任务：写入 YAML 文件 + 注册到数据库 + 热加载到调度器。
+    创建新任务：写入 YAML 文件 + 注册到数据库 + 热加载到调度器（仅 system）。
     """
     name = body.name.strip()
     yaml_content = body.config_yaml.strip()
@@ -245,44 +265,39 @@ async def create_task(request: Request, body: CreateTaskRequest):
 
     task_config["name"] = name
 
-    if "schedule" not in task_config:
-        raise HTTPException(status_code=400, detail="YAML 配置必须包含 schedule 字段")
+    trigger_type = task_config.get("trigger_type", "system")
 
-    scheduler = getattr(request.app.state, "scheduler", None)
-    if scheduler:
-        result = scheduler.add_job(task_config)
-        if result is None:
-            raise HTTPException(status_code=500, detail="任务注册失败")
-        return {
-            "code": 0,
-            "message": f"任务 '{name}' 创建成功并已热加载到调度器",
-            "data": {
-                "name": name,
-                "type": result.get("type", "web"),
-                "schedule": result.get("schedule"),
-                "target_table": result.get("target_table"),
-            },
-        }
+    if trigger_type == "system" and "schedule" not in task_config:
+        raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
 
-    # 纯 API 模式
     config_dir = _get_config_dir(request)
     db = _get_db(request)
 
-    filepath = os.path.join(config_dir, f"{name}.yaml")
+    # 写入 YAML 文件到对应子目录
+    filepath = _task_filepath(config_dir, name, trigger_type)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
 
+    # 注册到数据库
     from task_manager.loader import TaskLoader
     loader = TaskLoader(config_dir, db)
-    processed = loader._register_task(task_config)
+    processed = loader._register_task(task_config, trigger_type)
+
+    # 热加载到调度器（仅 system 类型）
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler and trigger_type == "system":
+        scheduler._register_job(processed)
+        scheduler._tasks[name] = processed
 
     return {
         "code": 0,
-        "message": f"任务 '{name}' 创建成功（重启调度器后生效）",
+        "message": f"任务 '{name}' 创建成功" + ("并已热加载" if scheduler and trigger_type == "system" else ""),
         "data": {
             "name": name,
             "type": processed.get("type", "web"),
             "schedule": processed.get("schedule"),
+            "trigger_type": trigger_type,
             "target_table": processed.get("target_table"),
         },
     }

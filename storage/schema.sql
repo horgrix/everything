@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS crawl_tasks (
     task_type     TEXT NOT NULL DEFAULT 'web',
     target_table  TEXT NOT NULL,
     schedule      TEXT NOT NULL,
+    trigger_type  TEXT NOT NULL DEFAULT 'system',
     enabled       INTEGER NOT NULL DEFAULT 1,
     config_yaml   TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),

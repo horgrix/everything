@@ -99,13 +99,15 @@ class Database:
     # ================================================================
 
     def upsert_task(self, task_name: str, task_type: str, target_table: str,
-                    schedule: str, config_yaml: str) -> int:
+                    schedule: str, config_yaml: str,
+                    trigger_type: str = "system") -> int:
         """
         插入或更新任务定义，返回 task_id。
         """
+        self._migrate_add_trigger_type()
         sql = """
-            INSERT INTO crawl_tasks (task_name, task_type, target_table, schedule, config_yaml)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO crawl_tasks (task_name, task_type, target_table, schedule, trigger_type, config_yaml)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(task_name) DO UPDATE SET
                 task_type   = excluded.task_type,
                 target_table = excluded.target_table,
@@ -114,7 +116,7 @@ class Database:
                 updated_at  = excluded.updated_at
         """
         cur = self.conn.execute(sql, (
-            task_name, task_type, target_table, schedule, config_yaml
+            task_name, task_type, target_table, schedule, trigger_type, config_yaml
         ))
         self.conn.commit()
         # 返回 task_id：insert 用 lastrowid，update 需回查
@@ -278,6 +280,19 @@ class Database:
     # ================================================================
     # 工具方法
     # ================================================================
+
+    def _migrate_add_trigger_type(self):
+        """v1.4 迁移：为旧数据库添加 trigger_type 列"""
+        try:
+            cols = self.conn.execute("PRAGMA table_info(crawl_tasks)").fetchall()
+            col_names = {row["name"] for row in cols}
+            if "trigger_type" not in col_names:
+                self.conn.execute(
+                    "ALTER TABLE crawl_tasks ADD COLUMN trigger_type TEXT NOT NULL DEFAULT 'system'"
+                )
+                self.conn.commit()
+        except Exception:
+            pass
 
     @staticmethod
     def _hash(text: str) -> str:

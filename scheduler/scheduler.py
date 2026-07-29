@@ -54,8 +54,11 @@ class CrawlScheduler:
         if not tasks:
             logger.warning("未找到任何任务配置，调度器空闲运行")
 
-        # 2. 逐个注册到 APScheduler
+        # 2. 仅注册 system 类型任务到 APScheduler（user 类型仅供手动触发）
         for task_config in tasks:
+            if task_config.get("_trigger_type", "system") != "system":
+                logger.info("跳过 user 类型任务: %s", task_config.get("name"))
+                continue
             self._register_job(task_config)
 
         # 3. 启动
