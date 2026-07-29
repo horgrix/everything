@@ -1,12 +1,11 @@
 """
 任务加载模块：从 YAML 配置文件加载爬取任务，注册到数据库。
 
-支持子目录分类：
-  config/tasks/system_trigger/  — system 类型，schedule 必填，自动注册到 APScheduler
-  config/tasks/user_trigger/    — user   类型，schedule 可选（缺省 '-'），不注册到调度器
+目录约定：
+  config/tasks/system_trigger/  — system 类型定时任务
+  config/tasks/user_trigger/    — user   类型手动任务
 """
 
-import os
 import yaml
 import logging
 from pathlib import Path
@@ -31,36 +30,19 @@ class TaskLoader:
         self._subdirs = ["system_trigger", "user_trigger"]
 
     def load_all(self) -> list[dict]:
-        """
-        扫描 config_dir 下 system_trigger/ 和 user_trigger/ 子目录，
-        以及根目录平铺的 .yaml/.yml 文件（默认归类为 system）。
-        解析并注册任务，返回任务配置列表。
-        """
+        """扫描 system_trigger/ 和 user_trigger/ 子目录，解析并注册任务。"""
         if not self.config_dir.exists():
             logger.warning("配置目录不存在: %s", self.config_dir)
             return []
 
         tasks = []
-
-        # 1. 扫描子目录
         for sub in self._subdirs:
             sub_path = self.config_dir / sub
-            trigger_type = "system" if sub == "system_trigger" else "user"
-            if sub_path.exists():
-                for yaml_file in sorted(sub_path.glob("*.yaml")):
-                    tasks.extend(self._load_file(yaml_file, trigger_type))
-                for yaml_file in sorted(sub_path.glob("*.yml")):
-                    tasks.extend(self._load_file(yaml_file, trigger_type))
-
-        # 2. 扫描根目录平铺文件（兼容旧项目，默认归类 system）
-        for yaml_file in sorted(self.config_dir.glob("*.yaml")):
-            if yaml_file.name.startswith("_"):
-                continue  # 跳过示例文件
-            tasks.extend(self._load_file(yaml_file, "system"))
-        for yaml_file in sorted(self.config_dir.glob("*.yml")):
-            if yaml_file.name.startswith("_"):
+            if not sub_path.exists():
                 continue
-            tasks.extend(self._load_file(yaml_file, "system"))
+            trigger_type = "system" if sub == "system_trigger" else "user"
+            for yaml_file in sorted(sub_path.glob("*.yaml")):
+                tasks.extend(self._load_file(yaml_file, trigger_type))
 
         logger.info("共加载 %d 个任务", len(tasks))
         return tasks
@@ -81,12 +63,7 @@ class TaskLoader:
             logger.warning("空配置文件: %s", filepath)
             return []
 
-        # 支持单任务和多任务（列表）
-        if isinstance(data, list):
-            task_list = data
-        else:
-            task_list = [data]
-
+        task_list = data if isinstance(data, list) else [data]
         results = []
         for task_config in task_list:
             try:
@@ -101,67 +78,62 @@ class TaskLoader:
 
     def _register_task(self, config: dict, trigger_type: str = "system",
                        filepath: Path = None) -> Optional[dict]:
-        """
-        注册单个任务：
-        1. 验证必要字段
-        2. 创建/同步业务表结构
-        3. UPSERT 到 crawl_tasks 表
-        """
-        # 验证
+        """注册单个任务：验证 → 建表 → UPSERT。"""
         name = config.get("name")
         if not name:
             logger.error("任务缺少 name 字段")
             return None
 
-        target_table = config.get("target_table")
-        outputs_config = config.get("outputs", [])
-        if not target_table and not outputs_config:
-            logger.error("任务 '%s' 缺少 target_table 或 outputs 字段", name)
-            return None
-        if not target_table and outputs_config:
-            target_table = outputs_config[0]["target_table"]
+        # target_table 是 outputs 的简写形式，统一包装为 outputs
+        if "target_table" in config:
+            target_table = config.pop("target_table")
+            output = {"target_table": target_table}
+            # 如果顶层有 table_schema/parser 且 outputs 不存在，复制到 output
+            if "outputs" not in config:
+                if "table_schema" in config:
+                    output["table_schema"] = config.pop("table_schema")
+                if "parser" in config:
+                    output["parser"] = config.pop("parser")
+                config["outputs"] = [output]
 
+        outputs_config = config.get("outputs", [])
+        if not outputs_config:
+            logger.error("任务 '%s' 缺少 outputs 字段", name)
+            return None
+
+        # 取第一个 output 的 table 作为主表记录
+        first_table = outputs_config[0].get("target_table", "unknown")
+
+        # system 类型必须有 schedule
         schedule = config.get("schedule")
         if trigger_type == "system" and not schedule:
             logger.error("任务 '%s' (system_trigger) 缺少 schedule 字段", name)
             return None
-        if trigger_type == "user":
-            schedule = schedule or "-"  # user 类型 schedule 可选
+        schedule = schedule or "-"
 
-        task_type = config.get("type", "web")
+        trigger_type_in_config = config.get("trigger_type", trigger_type)
 
-        # 创建业务表（含索引）
-        table_schema = config.get("table_schema", {})
-        columns = table_schema.get("columns", [])
-        indexes = table_schema.get("indexes", [])
-
-        if columns and target_table:
-            self.db.ensure_business_table(target_table, columns, indexes)
-            logger.info("业务表 '%s' 已就绪", target_table)
-
-        # outputs 中的表也需要创建
+        # 创建业务表
         for output_config in outputs_config:
-            out_table = output_config.get("target_table", "")
-            out_schema = output_config.get("table_schema", {})
-            out_columns = out_schema.get("columns", [])
-            out_indexes = out_schema.get("indexes", [])
-            if out_columns and out_table:
-                self.db.ensure_business_table(out_table, out_columns, out_indexes)
-                logger.info("输出业务表 '%s' 已就绪", out_table)
+            schema = output_config.get("table_schema", {})
+            columns = schema.get("columns", [])
+            indexes = schema.get("indexes", [])
+            table = output_config.get("target_table", "")
+            if columns and table:
+                self.db.ensure_business_table(table, columns, indexes)
+                logger.info("业务表 '%s' 已就绪", table)
 
-        # 序列化完整配置
+        # 序列化完整配置（含 outputs）
         config_yaml = yaml.dump(config, allow_unicode=True, default_flow_style=False)
 
-        # UPSERT 任务记录
         task_id = self.db.upsert_task(
-            name, task_type, target_table, schedule, config_yaml, trigger_type
+            name, config.get("type", "web"), first_table,
+            schedule, config_yaml, trigger_type_in_config,
         )
 
-        # 将 task_id 注入回 config，供 engine 使用
         config["_task_id"] = task_id
         config["_source_file"] = str(filepath or self.config_dir)
-        config["_trigger_type"] = trigger_type
+        config["_trigger_type"] = trigger_type_in_config
 
-        logger.info("任务注册成功: %s (id=%d, type=%s, table=%s, schedule=%s)",
-                     name, task_id, trigger_type, target_table, schedule)
+        logger.info("任务注册成功: %s (id=%d, type=%s)", name, task_id, trigger_type_in_config)
         return config

@@ -108,10 +108,6 @@ class CrawlerEngine:
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             return [ctx]
 
-        # 统一为列表格式，兼容旧的 dict 单变量配置
-        if isinstance(iterate_config, dict):
-            iterate_config = [iterate_config]
-
         # 笛卡尔积展开
         var_names = [item["var_name"] for item in iterate_config]
         values_lists = [item["values"] for item in iterate_config]
@@ -188,21 +184,8 @@ class CrawlerEngine:
     # ================================================================
 
     def _resolve_outputs(self, task_config: dict) -> list[dict]:
-        """
-        如果配置了 outputs，返回 outputs 列表；否则将主配置包装为单元素列表。
-
-        每个 output_config 包含: target_table, parser, table_schema（可选）
-        """
-        outputs = task_config.get("outputs")
-        if outputs:
-            return outputs
-
-        # 单表模式：主配置即输出配置
-        return [{
-            "target_table": task_config["target_table"],
-            "parser": task_config.get("parser", {}),
-            "table_schema": task_config.get("table_schema", {}),
-        }]
+        """返回 outputs 配置列表（由 loader 统一包装为 outputs 格式）。"""
+        return task_config.get("outputs", [])
 
     # ================================================================
     # 核心流水线：解析 → 清洗 → 注入 → 写入（唯一路径）

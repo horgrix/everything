@@ -157,16 +157,10 @@ async def delete_task(request: Request, task_name: str):
         except Exception:
             pass
 
-    # 2. 删除 YAML 文件（子目录 + 根目录兼容）
+    # 2. 删除 YAML 文件（仅子目录）
     deleted_files = []
-    search_paths = [os.path.join(config_dir, f"{task_name}.yaml"),
-                    os.path.join(config_dir, f"{task_name}.yml")]
     for sub in ("system_trigger", "user_trigger"):
-        if os.path.isdir(os.path.join(config_dir, sub)):
-            search_paths.append(os.path.join(config_dir, sub, f"{task_name}.yaml"))
-            search_paths.append(os.path.join(config_dir, sub, f"{task_name}.yml"))
-
-    for fp in search_paths:
+        fp = os.path.join(config_dir, sub, f"{task_name}.yaml")
         if os.path.exists(fp):
             os.remove(fp)
             deleted_files.append(fp)
