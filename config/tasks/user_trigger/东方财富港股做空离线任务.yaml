@@ -9,7 +9,10 @@ iterate:
       - 3
       - 4
       - 5  
-url: "https://hk.eastmoney.com/sellshort_{page}.html?code=02400&sdate=&edate="
+  - var_name: "code"
+    values: 
+      - "02400" 
+url: "https://hk.eastmoney.com/sellshort_{page}.html?code={code}&sdate=&edate="
 encoding: 'utf-8'
 trigger_type: user
 outputs:

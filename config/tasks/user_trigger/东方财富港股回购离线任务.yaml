@@ -6,7 +6,10 @@ iterate:
     values: 
       - 1 
       - 2   
-url: "https://hk.eastmoney.com/buyback_{page}.html?code=02400&sdate=&edate="
+  - var_name: "code"
+    values: 
+      - "02400" 
+url: "https://hk.eastmoney.com/buyback_{page}.html?code={code}&sdate=&edate="
 encoding: 'utf-8'
 trigger_type: user
 outputs:
@@ -44,7 +47,7 @@ outputs:
           column: 8
           strip: true
         - name: code
-          value: "02400"
+          value: "{code}"
         - name: volume
           column: 3
           strip: true

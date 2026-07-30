@@ -5,7 +5,7 @@ iterate:
   - var_name: "code"
     values: 
       - '02400'    # 心动
-url: "https://hk.eastmoney.com/sellshort.html?code={code}&sdate={days_ago:2}&edate={today}"
+url: "https://hk.eastmoney.com/sellshort.html?code={code}&sdate={days_ago:3}&edate={today}"
 encoding: 'utf-8'
 trigger_type: system
 schedule: "15 19 * * *"
