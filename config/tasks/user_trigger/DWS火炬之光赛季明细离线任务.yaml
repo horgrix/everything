@@ -9,11 +9,11 @@ db:
       SELECT steam_id, peak_players, 12 AS ss, ((stat_ts - 1776355200000) / 86400000) + 1 AS ss_day 
       FROM steam_game_peak_players_hourly 
       WHERE steam_id in (1974050, 2315040)
-      AND stat_ts >= 1776355200000 AND stat_ts <= 1776268800000
+      AND stat_ts >= 1776355200000 AND stat_ts <= 1784131200000
     ) as a
     GROUP BY steam_id, ss, ss_day
     UNION ALL
-    SELECT steam_id, 11 as ss, ((stat_ts - (8 * 3600 * 1000) - 1768492800000) / 86400000) + 1 as ss_day, peak_players
+    SELECT steam_id, 11 as ss, ((stat_ts - 1768492800000) / 86400000) + 1 as ss_day, peak_players
     FROM torchlight_ss11_steam_game_peak_players_daily
 trigger_type: user
 outputs:
