@@ -3,6 +3,7 @@ type: web
 method: GET
 url: "https://www.hkex.com.hk/chi/stat/smstat/ssturnover/ncms/ashtmain_c.htm"
 encoding: 'big5hkscs'
+trigger_type: system
 schedule: "30 19 * * *"
 outputs:
   - target_table: "hk_exchange_short_selling_daily"

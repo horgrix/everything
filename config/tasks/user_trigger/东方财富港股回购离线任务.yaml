@@ -1,13 +1,14 @@
-name: "东方财富港股回购每日采集任务"
+name: "东方财富港股回购离线任务"
 type: web
 method: GET
 iterate:
-  var_name: "code"
-  values: 
-    - '02400'    # 心动
-url: "https://hk.eastmoney.com/buyback.html?code={code}&sdate={days_ago:2}&edate={today}"
+  - var_name: "page"
+    values: 
+      - 1 
+      - 2   
+url: "https://hk.eastmoney.com/buyback_{page}.html?code=02400&sdate=&edate="
 encoding: 'utf-8'
-schedule: "33 20 * * *"
+trigger_type: user
 outputs:
   - target_table: "hk_stock_buyback_daily"
     table_schema:
@@ -43,7 +44,7 @@ outputs:
           column: 8
           strip: true
         - name: code
-          value: "{code}"
+          value: "02400"
         - name: volume
           column: 3
           strip: true

@@ -2,12 +2,13 @@ name: "Steam游戏玩家每日评价采集任务"
 type: api
 method: GET
 iterate:
-  var_name: "steam_id"
-  values: 
-    - 1974050    # 火炬之光 国际服
-    - 2315040    # 火炬之光 国服
-    - 4025700    # 心动小镇 国际服
+  - var_name: "steam_id"
+    values: 
+      - 1974050    # 火炬之光 国际服
+      - 2315040    # 火炬之光 国服
+      - 4025700    # 心动小镇 国际服
 url: "https://store.steampowered.com/appreviewhistogram/{steam_id}"
+trigger_type: system
 schedule: "0 8 * * *"
 outputs:
   - target_table: "steam_player_review_recent"
