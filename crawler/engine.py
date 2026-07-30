@@ -103,10 +103,13 @@ class CrawlerEngine:
         iterate_config = task_config.get("iterate", {})
 
         if not iterate_config:
-            # 无 iterate：按主配置构建单个上下文
             ctx = dict(base_context)
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             return [ctx]
+
+        # 统一为 list 格式
+        if isinstance(iterate_config, dict):
+            iterate_config = [iterate_config]
 
         # 笛卡尔积展开
         var_names = [item["var_name"] for item in iterate_config]
