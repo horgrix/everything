@@ -414,6 +414,30 @@ async def count_table(
     return {"code": 0, "message": "success", "data": {"table": table_name, "count": count}}
 
 
+@router.delete("/{table_name}/rows")
+async def truncate_table(request: Request, table_name: str):
+    """
+    Truncate (clear all rows from) a business table.
+
+    路径参数:
+        table_name: 目标业务表
+    """
+    _validate_table_name(table_name)
+    db = _get_db(request)
+
+    # 获取删除前行数
+    before = db.conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+
+    db.conn.execute(f"DELETE FROM {table_name}")
+    db.conn.commit()
+
+    return {
+        "code": 0,
+        "message": f"表 '{table_name}' 已清空，共删除 {before} 行",
+        "data": {"table": table_name, "deleted": before},
+    }
+
+
 # ================================================================
 # Helpers
 # ================================================================

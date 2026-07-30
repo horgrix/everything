@@ -55,6 +55,7 @@
                 <div class="mt-2">
                     <button class="btn btn-primary" onclick="loadData()"><i class="bi bi-search me-1"></i>查询</button>
                     <button class="btn btn-outline-success ms-2" onclick="showBatchInsertModal()" id="batchInsertBtn" disabled title="批量插入数据"><i class="bi bi-plus-square me-1"></i>批量插入</button>
+                    <button class="btn btn-outline-danger ms-2" onclick="truncateTable()" id="truncateBtn" disabled title="清空当前表所有数据"><i class="bi bi-exclamation-triangle me-1"></i>清空数据</button>
                 </div>
             </div>
         </div>
@@ -158,6 +159,7 @@ function onTableChange() {
     currentTable = document.getElementById('tableSelect').value;
     currentPage = 0;
     document.getElementById('batchInsertBtn').disabled = !currentTable;
+    document.getElementById('truncateBtn').disabled = !currentTable;
     _colCache = null;
     if (currentTable) loadData();
 }
@@ -310,6 +312,23 @@ async function saveEdit() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i class="bi bi-check-lg"></i> 保存';
+    }
+}
+
+async function truncateTable() {
+    if (!currentTable) return;
+    if (!confirm(`⚠️ 确认清空表 "${currentTable}" 的所有数据？\n此操作不可撤销！请手动输入表名确认:`)) return;
+    const confirmName = prompt(`请输入表名 "${currentTable}" 以确认清空操作:`);
+    if (confirmName !== currentTable) {
+        toast('表名不匹配，已取消操作', 'warning');
+        return;
+    }
+    try {
+        const res = await apiDelete(`/data/${currentTable}/rows`);
+        toast(res.message, 'success');
+        loadData(currentPage);
+    } catch(e) {
+        toast('清空失败: ' + e.message, 'danger');
     }
 }
 
