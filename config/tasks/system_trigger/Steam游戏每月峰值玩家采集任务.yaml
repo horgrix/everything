@@ -10,27 +10,27 @@ iterate:
 url: "https://steamcharts.com/app/{steam_id}"
 schedule: "35 8 2 * *"
 trigger_type: system
-target_table: "steam_game_peak_players_monthly"
 outputs:
-  - table_schema:
-    columns:
-      - name: id
-        type: INTEGER
-        constraint: PRIMARY KEY AUTOINCREMENT
-      - name: steam_id
-        type: INTEGER
-      - name: stat_month
-        type: TEXT
-      - name: avg_players
-        type: REAL
-      - name: peak_players
-        type: INTEGER
-      - name: crawled_at
-        type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-    indexes:
-      - name: idx_uk_steam_id_stat_month
-        columns: [steam_id, stat_month]
-        unique: true
+  - target_table: "steam_game_peak_players_monthly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: steam_id
+          type: INTEGER
+        - name: stat_month
+          type: TEXT
+        - name: avg_players
+          type: REAL
+        - name: peak_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      indexes:
+        - name: idx_uk_steam_id_stat_month
+          columns: [steam_id, stat_month]
+          unique: true
     parser:
       type: html_table
       row_selector: "table.common-table tbody tr"
