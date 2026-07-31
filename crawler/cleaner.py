@@ -117,7 +117,7 @@ class Cleaner:
 
         truncate_right = clean_rules.get("truncate_right")
         if truncate_right is not None and truncate_right > 0 and len(value) > truncate_right:
-            value = value[-truncate_right:]
+            value = value[:-truncate_right]
 
         if clean_rules.get("trim_whitespace"):
             value = re.sub(r"\s+", " ", value)
