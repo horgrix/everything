@@ -41,6 +41,7 @@ class Parser:
 
     def __init__(self):
         # self._cleaner = Cleaner()
+        pass
 
     # ================================================================
     # element_selector：页面级元素提取（用于 html_table 等场景）
