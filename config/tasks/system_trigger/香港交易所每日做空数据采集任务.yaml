@@ -38,6 +38,8 @@ outputs:
           regex_extract: '賣空指定證券（不包括交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
         - name: exchange_traded_products_only_ss_percentage
           regex_extract: '賣空指定證券（僅限交易所買賣產品）佔市場總成交的百分比[^\d]*(\d+%)'
+        - name: crawled_at
+          value: "{last_week:2}"
 anti_spider:
   enabled: false
   delay:
