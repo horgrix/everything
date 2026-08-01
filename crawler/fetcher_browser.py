@@ -111,6 +111,7 @@ class BrowserFetcher:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/120.0.0.0 Safari/537.36"
             ),
+            locale='zh-CN'
         )
         page = await context.new_page()
 
