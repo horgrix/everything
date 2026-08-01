@@ -45,11 +45,6 @@ outputs:
       element_selector:
         stat_date:
           selector: "div.vlHd8EhkUPvzcN2Xn4Y0j._2AQqwf9WZKu7d8zUGYJ5VR"
-          strip: true
-          truncate_right: 2
-          to_datetime: true
-          date_format: "%Y年%-m月%-d日"
-          date_output_format: "%Y-%m-%d"
       fields:
         - name: steam_id
           column: 2
@@ -69,6 +64,11 @@ outputs:
           strip: true
         - name: crawled_at
           value: "{stat_date}"
+          strip: true
+          truncate_right: 2
+          to_datetime: true
+          date_format: "%Y年%-m月%-d日"
+          date_output_format: "%Y-%m-%d"
 anti_spider:
   enabled: false
   delay:

@@ -40,7 +40,7 @@ class Parser:
     """
 
     def __init__(self):
-        self._cleaner = Cleaner()
+        # self._cleaner = Cleaner()
 
     # ================================================================
     # element_selector：页面级元素提取（用于 html_table 等场景）
@@ -94,11 +94,11 @@ class Parser:
 
             # 生成 field_config 传给 Cleaner.clean_field 做清洗
             # 过滤掉非清洗配置的键（selector, attr 等）
-            clean_config = {k: v for k, v in var_config.items()
-                           if k not in ("selector", "attr")}
+            # clean_config = {k: v for k, v in var_config.items()
+            #                if k not in ("selector", "attr")}
 
-            if clean_config:
-                value = self._cleaner.clean_field(value, {"clean": clean_config})
+            # if clean_config:
+            #     value = self._cleaner.clean_field(value, {"clean": clean_config})
 
             result[var_name] = value
 
