@@ -13,8 +13,7 @@ import argparse
 import asyncio
 import signal
 import logging
-from storage.database import Database
-from scheduler.scheduler import CrawlScheduler
+from app import create_app
 
 
 def setup_logging(level: str = "INFO"):
@@ -64,13 +63,10 @@ def parse_args():
     return parser.parse_args()
 
 
-async def run_once(task_name: str, config_dir: str, db: Database):
-    """执行一次指定任务后退出"""
-    from task_manager.loader import TaskLoader
-    from crawler.engine import CrawlerEngine
-
-    loader = TaskLoader(config_dir, db)
-    tasks = loader.load_all()
+async def run_once(task_name: str, config_dir: str, db_path: str):
+    """Execute a task once, then exit."""
+    app = create_app(config_dir=config_dir, db_path=db_path)
+    tasks = app.loader.load_all()
 
     target = None
     for t in tasks:
@@ -83,21 +79,21 @@ async def run_once(task_name: str, config_dir: str, db: Database):
         print("可用任务:")
         for t in tasks:
             print(f"  - {t['name']}")
+        app.db.close()
         return
 
-    engine = CrawlerEngine()
     task_id = target["_task_id"]
-    log_id = db.start_crawl_log(task_id)
+    log_id = app.db.start_crawl_log(task_id)
 
     import time
     start = time.time()
-    stats = await engine.run(target, db)
+    stats = await app.engine.run(target, app.db)
     duration_ms = int((time.time() - start) * 1000)
 
     if stats.get("error"):
-        db.fail_crawl_log(log_id, stats["error"], duration_ms)
+        app.db.fail_crawl_log(log_id, stats["error"], duration_ms)
     else:
-        db.finish_crawl_log(
+        app.db.finish_crawl_log(
             log_id,
             records_new=stats.get("new", 0),
             records_updated=stats.get("updated", 0),
@@ -113,31 +109,25 @@ async def run_once(task_name: str, config_dir: str, db: Database):
     if stats.get("error"):
         print(f"  错误: {stats['error']}")
 
+    app.db.close()
+
 
 async def _async_main(args):
-    """异步主函数：调度器必须在事件循环内部启动。"""
+    """Async entry point."""
     logger = logging.getLogger("main")
 
-    # 初始化数据库
-    db_path = args.db
-    db = Database(db_path)
-    db.init_system_tables()
-    logger.info("数据库已就绪: %s", os.path.abspath(db_path))
-
-    # 确保配置目录存在
     config_dir = args.config
-    os.makedirs(config_dir, exist_ok=True)
+    db_path = args.db
 
-    # --run-once 模式
+    # --run-once mode: single task, no scheduler
     if args.run_once:
-        await run_once(args.run_once, config_dir, db)
-        db.close()
+        await run_once(args.run_once, config_dir, db_path)
         return
 
-    # 正常调度模式
-    scheduler = CrawlScheduler(config_dir=config_dir, db=db)
+    # Normal mode: assemble app + start scheduler
+    app = create_app(config_dir=config_dir, db_path=db_path)
 
-    # 使用 asyncio.Event 实现优雅关闭
+    # Graceful shutdown
     stop_event = asyncio.Event()
 
     loop = asyncio.get_running_loop()
@@ -145,38 +135,35 @@ async def _async_main(args):
         try:
             loop.add_signal_handler(sig, stop_event.set)
         except NotImplementedError:
-            # Windows 不支持 add_signal_handler，回退到 signal.signal
             signal.signal(sig, lambda s, f: stop_event.set())
 
-    # 启动调度器（此时事件循环已运行）
-    scheduler.start()
+    app.scheduler.start()
 
-    # --api 模式：同时启动 HTTP API 服务
+    # --api mode: also start HTTP API
     api_server = None
     if args.api:
         import uvicorn
-        from api import create_app
+        from api import create_app as create_api_app
 
         api_config = uvicorn.Config(
-            create_app(config_dir=config_dir, db_path=db_path, scheduler=scheduler),
+            create_api_app(config_dir=config_dir, db_path=db_path, scheduler=app.scheduler),
             host="0.0.0.0",
             port=args.api_port,
             log_level=args.log_level.lower(),
         )
         api_server = uvicorn.Server(api_config)
         logger.info("API 服务启动在 http://0.0.0.0:%d", args.api_port)
-        # 在后台启动 API（与调度器共享事件循环）
         api_task = asyncio.create_task(api_server.serve())
 
     try:
         await stop_event.wait()
     finally:
         logger.info("收到退出信号，正在关闭...")
-        scheduler.shutdown()
+        app.scheduler.shutdown()
         if api_server:
             api_server.should_exit = True
             await api_task
-        db.close()
+        app.db.close()
         logger.info("系统已退出")
 
 

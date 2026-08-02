@@ -55,6 +55,8 @@ config/secrets.yaml
 # db
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 crawler.db
 
 # browser driver

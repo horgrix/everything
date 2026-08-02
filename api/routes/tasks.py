@@ -110,7 +110,13 @@ async def trigger_run(request: Request, task_name: str):
     log_id = db.start_crawl_log(task_id)
 
     start = time.time()
-    engine = CrawlerEngine()
+    # Try to get engine from scheduler, fallback to creating one
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler and scheduler._engine:
+        engine = scheduler._engine
+    else:
+        from crawler.sources import create_default_registry
+        engine = CrawlerEngine(sources=create_default_registry())
 
     try:
         stats = await engine.run(target, db)
@@ -187,37 +193,12 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
     """
     更新任务配置：覆写 YAML 文件 + 重新注册到数据库 + 热重载到调度器。
     """
-    yaml_content = body.config_yaml.strip()
-    if not yaml_content:
-        raise HTTPException(status_code=400, detail="YAML 配置不能为空")
+    from api.deps import parse_task_yaml, validate_trigger_type
 
-    try:
-        task_config = yaml.safe_load(yaml_content)
-    except yaml.YAMLError as e:
-        raise HTTPException(status_code=400, detail=f"YAML 解析失败: {e}")
-
-    if not isinstance(task_config, dict):
-        raise HTTPException(status_code=400, detail="YAML 顶层必须是一个字典（任务配置）")
-
-    task_config["name"] = task_name
-
+    task_config = parse_task_yaml(body.config_yaml, task_name)
     config_dir = _get_config_dir(request)
     db = _get_db(request)
-
-    # trigger_type 必填
-    trigger_type = task_config.get("trigger_type")
-    if not trigger_type:
-        raise HTTPException(status_code=400, detail="trigger_type 字段必填（system 或 user）")
-    if trigger_type not in ("system", "user"):
-        raise HTTPException(status_code=400, detail=f"无效的 trigger_type: {trigger_type}")
-
-    # schedule 校验
-    if trigger_type == "system":
-        if "schedule" not in task_config or not task_config["schedule"]:
-            raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
-    else:  # user
-        if "schedule" in task_config:
-            raise HTTPException(status_code=400, detail="user 类型任务不允许 schedule 字段")
+    trigger_type = validate_trigger_type(task_config)
 
     # 1. 覆写 YAML 文件到对应子目录
     filepath = _task_filepath(config_dir, task_name, trigger_type)
@@ -259,37 +240,13 @@ async def create_task(request: Request, body: CreateTaskRequest):
     创建新任务：写入 YAML 文件 + 注册到数据库 + 热加载到调度器（仅 system）。
     """
     name = body.name.strip()
-    yaml_content = body.config_yaml.strip()
-
     if not name:
         raise HTTPException(status_code=400, detail="任务名称不能为空")
-    if not yaml_content:
-        raise HTTPException(status_code=400, detail="YAML 配置不能为空")
 
-    try:
-        task_config = yaml.safe_load(yaml_content)
-    except yaml.YAMLError as e:
-        raise HTTPException(status_code=400, detail=f"YAML 解析失败: {e}")
+    from api.deps import parse_task_yaml, validate_trigger_type
 
-    if not isinstance(task_config, dict):
-        raise HTTPException(status_code=400, detail="YAML 顶层必须是一个字典（任务配置）")
-
-    task_config["name"] = name
-
-    # trigger_type 必填
-    trigger_type = task_config.get("trigger_type")
-    if not trigger_type:
-        raise HTTPException(status_code=400, detail="trigger_type 字段必填（system 或 user）")
-    if trigger_type not in ("system", "user"):
-        raise HTTPException(status_code=400, detail=f"无效的 trigger_type: {trigger_type}")
-
-    # schedule 校验
-    if trigger_type == "system":
-        if "schedule" not in task_config or not task_config["schedule"]:
-            raise HTTPException(status_code=400, detail="system 类型任务必须包含 schedule 字段")
-    else:  # user
-        if "schedule" in task_config:
-            raise HTTPException(status_code=400, detail="user 类型任务不允许 schedule 字段")
+    task_config = parse_task_yaml(body.config_yaml, name)
+    trigger_type = validate_trigger_type(task_config)
 
     config_dir = _get_config_dir(request)
     db = _get_db(request)

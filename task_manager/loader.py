@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from .schema import TaskConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -137,4 +139,4 @@ class TaskLoader:
         config["_trigger_type"] = trigger_type_in_config
 
         logger.info("任务注册成功: %s (id=%d, type=%s)", name, task_id, trigger_type_in_config)
-        return config
+        return TaskConfig.from_dict(config)

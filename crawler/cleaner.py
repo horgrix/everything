@@ -280,7 +280,7 @@ class Cleaner:
         # 将数字字符串转为浮点数
         base_number = float(number_str)
     
-        return int(base_number * unit_map.get(unit_str, "1"))
+        return int(base_number * unit_map.get(unit_str, 1))
 
     # ================================================================
     # 过滤条件

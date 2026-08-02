@@ -20,8 +20,6 @@ import logging
 import re as _re
 from typing import Any
 from bs4 import BeautifulSoup
-from .cleaner import Cleaner
-
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +38,6 @@ class Parser:
     """
 
     def __init__(self):
-        # self._cleaner = Cleaner()
         pass
 
     # ================================================================
@@ -88,19 +85,10 @@ class Parser:
                 result[var_name] = ""
                 continue
 
-            # 提取第一个匹配元素的值
+            # Extract value from the first matching element
             element = elements[0]
             attr = var_config.get("attr")
             value = element.get(attr, "") if attr else element.get_text()
-
-            # 生成 field_config 传给 Cleaner.clean_field 做清洗
-            # 过滤掉非清洗配置的键（selector, attr 等）
-            # clean_config = {k: v for k, v in var_config.items()
-            #                if k not in ("selector", "attr")}
-
-            # if clean_config:
-            #     value = self._cleaner.clean_field(value, {"clean": clean_config})
-
             result[var_name] = value
 
         logger.debug("element_selector 提取结果: %s", result)

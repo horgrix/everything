@@ -9,12 +9,9 @@
 """
 
 import time
-import asyncio
 import logging
-from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from crawler.engine import CrawlerEngine
 from task_manager.loader import TaskLoader
 
 logger = logging.getLogger(__name__)
@@ -34,11 +31,12 @@ class CrawlScheduler:
         asyncio.get_event_loop().run_forever()
     """
 
-    def __init__(self, config_dir: str, db):
+    def __init__(self, config_dir: str, db, engine=None, loader=None):
         self.config_dir = config_dir
         self.db = db
         self._scheduler = AsyncIOScheduler()
-        self._engine = CrawlerEngine()
+        self._engine = engine  # injected by create_app()
+        self._loader = loader  # injected by create_app()
         self._tasks: dict[str, dict] = {}  # task_name -> task_config
 
     def start(self):
@@ -48,7 +46,7 @@ class CrawlScheduler:
         logger.info("=" * 50)
 
         # 1. 加载所有 YAML 任务配置
-        loader = TaskLoader(self.config_dir, self.db)
+        loader = self._loader or TaskLoader(self.config_dir, self.db)
         tasks = loader.load_all()
 
         if not tasks:
@@ -141,48 +139,22 @@ class CrawlScheduler:
 
         logger.info("已注册定时任务: %s (cron: %s)", name, schedule)
 
-    def _execute_task_wrapper(self, task_config: dict):
+    async def _execute_task_wrapper(self, task_config: dict):
         """
-        APScheduler 不允许直接运行 async 函数，
-        此方法作为同步包装器，在运行中的事件循环内调度异步任务。
+        Async job entry point. AsyncIOScheduler runs this directly on the
+        event loop (not in a thread pool), so all DB access is safe.
         """
         name = task_config.get("name", "unknown")
         task_id = task_config.get("_task_id", 0)
-
-        logger.info(">>> 开始执行任务: %s", name)
         start_time = time.time()
 
-        # 创建运行日志
+        logger.info(">>> 开始执行任务: %s", name)
+
+        # 创建运行日志（事件循环线程，SQLite 安全）
         log_id = self.db.start_crawl_log(task_id)
 
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(self._execute_task(task_config, log_id, start_time))
-        except RuntimeError:
-            # 没有运行中的事件循环（不应发生，但做兜底）
-            try:
-                asyncio.run(self._execute_task(task_config, log_id, start_time))
-            except Exception as e:
-                duration_ms = int((time.time() - start_time) * 1000)
-                self.db.fail_crawl_log(log_id, str(e), duration_ms)
-                logger.error("任务 '%s' 执行异常: %s", name, e)
-        except Exception as e:
-            duration_ms = int((time.time() - start_time) * 1000)
-            self.db.fail_crawl_log(log_id, str(e), duration_ms)
-            logger.error("任务 '%s' 执行异常: %s", name, e)
-
-    async def _execute_task(self, task_config: dict, log_id: int, start_time: float):
-        """
-        实际执行爬取任务的异步方法。
-        """
-        name = task_config.get("name", "unknown")
-
-        try:
             stats = await self._engine.run(task_config, self.db)
-
-            # 如果任务配置了需要处理多页/多URL逻辑（如API分页），
-            # 可以在此处扩展，目前先处理单URL模式
-
             duration_ms = int((time.time() - start_time) * 1000)
 
             if stats.get("error"):

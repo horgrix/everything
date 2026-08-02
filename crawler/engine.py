@@ -1,103 +1,112 @@
 """
-爬虫引擎：统一流水线模型。
+Crawler engine: unified pipeline model.
 
-所有任务收敛为一条流水线：
-  上下文展开（iterate） → 数据获取（SDK/HTTP） → 输出展开（outputs） → 解析清洗写入
+All tasks converge into a single pipeline:
+  context expansion (iterate) → data fetch (via SourceRegistry) →
+  output expansion (outputs) → parse → clean → write
 """
 
 import logging
 import itertools
 from .dedup import URLDedup
-from .fetcher import Fetcher
-from .parser import Parser
-from .cleaner import Cleaner
-from .anti_spider import AntiSpider
-from .sdk_provider import SDKProvider
+from .pipeline import DataPipeline, PipelineResult
 from .template import URLTemplate
-from .fetcher_browser import BrowserFetcher
-from .file_reader import FileReader
-from .db_reader import DatabaseReader
+from .sources.base import SourceRegistry
 
 logger = logging.getLogger(__name__)
 
 
 class CrawlerEngine:
-    """爬虫引擎，协调请求/解析/清洗/存储全流程"""
+    """
+    Crawler engine — orchestrates the full pipeline.
 
-    def __init__(self):
+    Delegates data fetching to pluggable DataSource implementations
+    registered in a SourceRegistry.  No more if-else routing.
+
+    Usage:
+        sources = SourceRegistry()
+        sources.register("api", HttpSource())
+        sources.register("web", HttpSource(browser_source=BrowserSource()))
+        sources.register("sdk", SdkSource())
+        sources.register("csv", FileSource())
+        sources.register("excel", FileSource())
+        sources.register("db", DbSource())
+
+        engine = CrawlerEngine(sources)
+        stats = await engine.run(task_config, db)
+    """
+
+    def __init__(self, sources: SourceRegistry = None, pipeline: DataPipeline = None):
+        self._sources = sources or SourceRegistry()
+        self._pipeline = pipeline or DataPipeline()
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
-        self._parser = Parser()
-        self._cleaner = Cleaner()
-        self._file_reader = FileReader()
-        self._db_reader = DatabaseReader()
 
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
         """
-        执行一次爬取任务。
+        Execute a crawl task.
 
-        流程：iterate 展开 → fetch → outputs 展开 → 解析清洗写入
+        Pipeline: iterate expand → fetch → outputs expand → process each output.
 
-        返回:
+        Returns:
             {"new": N, "updated": N, "skipped": N, "error": str|None}
         """
         if url_context is None:
             url_context = {}
 
-        # 将全局 params 变量注入基础上下文
+        # Inject global params into base context
         base_context = dict(url_context)
         params = task_config.get("params", {})
         if params:
             base_context.update(params)
 
-        # 将 task_name 注入上下文
+        # Inject task_name into context
         base_context.setdefault("task_name", task_config.get("name", ""))
 
         contexts = self._build_iterate_contexts(task_config, base_context)
-        stats = {"new": 0, "updated": 0, "skipped": 0, "error": None}
+        total = PipelineResult()
+        error_msg = None
 
         for idx, ctx in enumerate(contexts):
-            # 每次迭代前，对 context 中所有字符串值做模板解析
+            # Resolve template variables in all context values before fetch
             ctx = self._resolve_all_templates(ctx)
 
-            # 1. 获取原始数据
+            # 1. Fetch raw data via SourceRegistry
             try:
                 raw_data = await self._fetch_data(task_config, ctx)
             except Exception as e:
-                logger.error("[%d/%d] 数据获取失败: %s", idx + 1, len(contexts), e)
-                stats["error"] = str(e)
+                logger.error("[%d/%d] Fetch failed: %s", idx + 1, len(contexts), e)
+                error_msg = str(e)
                 continue
 
             if raw_data is None:
                 continue
 
-            # 2. 展开输出目标
-            outputs = self._resolve_outputs(task_config)
+            # 2. Expand outputs + process each via pipeline
+            for output_config in self._resolve_outputs(task_config):
+                total += self._pipeline.process(raw_data, output_config, db, ctx)
 
-            # 3. 对每个输出目标执行 解析→清洗→写入
-            for output_config in outputs:
-                r = self._process_output(raw_data, output_config, db, ctx)
-                stats["new"] += r["inserted"]
-                stats["updated"] += r["updated"]
-                stats["skipped"] += r["total"] - r["inserted"] - r["updated"]
-
-        return stats
+        return {
+            "new": total.inserted,
+            "updated": total.updated,
+            "skipped": total.total - total.inserted - total.updated,
+            "error": error_msg,
+        }
 
     # ================================================================
-    # 上下文展开：iterate 横切逻辑（支持多变量笛卡尔积）
+    # Context expansion: iterate (Cartesian product of N variables)
     # ================================================================
 
     def _build_iterate_contexts(self, task_config: dict, base_context: dict) -> list[dict]:
         """
-        如果配置了 iterate，按 values 展开为一组上下文；否则按主配置构建单个上下文。
+        If 'iterate' is configured, expand into a list of contexts;
+        otherwise return a single context with resolved URL.
 
-        支持多变量笛卡尔积：
+        Supports multi-variable Cartesian product:
           iterate:
             - var_name: "region"
               values: [global, CN]
             - var_name: "page"
               values: [1, 2]
-
-        每个 context 包含解析后的 url 和注入的变量。
         """
         raw_url = base_context.get("url") or task_config.get("url", "")
         iterate_config = task_config.get("iterate", {})
@@ -107,11 +116,10 @@ class CrawlerEngine:
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             return [ctx]
 
-        # 统一为 list 格式
+        # Normalize to list format
         if isinstance(iterate_config, dict):
             iterate_config = [iterate_config]
 
-        # 笛卡尔积展开
         var_names = [item["var_name"] for item in iterate_config]
         values_lists = [item["values"] for item in iterate_config]
 
@@ -123,20 +131,17 @@ class CrawlerEngine:
             ctx["url"] = URLTemplate.resolve(raw_url, context=ctx)
             contexts.append(ctx)
 
-        logger.info("iterate 展开: %s 共 %d 个上下文",
+        logger.info("Iterate expansion: %s → %d contexts",
                      ", ".join(var_names), len(contexts))
         return contexts
 
     # ================================================================
-    # 模板解析：对 context 中所有字符串值递归替换变量
+    # Template resolution: recursively replace {var} in context values
     # ================================================================
 
     @staticmethod
     def _resolve_all_templates(ctx: dict) -> dict:
-        """
-        遍历 context 中所有值，对字符串类型做 URLTemplate.resolve()。
-        支持嵌套 dict（如 db.query 等复杂配置值）。
-        """
+        """Walk all context values, resolving template variables in strings."""
         def _resolve_value(value):
             if isinstance(value, str):
                 return URLTemplate.resolve(value, context=ctx)
@@ -149,117 +154,33 @@ class CrawlerEngine:
         return {k: _resolve_value(v) for k, v in ctx.items()}
 
     # ================================================================
-    # 数据获取：SDK / HTTP 路由
+    # Data fetch: delegated to SourceRegistry (no if-else)
     # ================================================================
 
     async def _fetch_data(self, task_config: dict, ctx: dict):
         """
-        根据 task type 获取原始数据。
+        Route to the correct DataSource via SourceRegistry.
 
-        type=sdk → SDKProvider.call；否则 → HTTP/browser fetch。
+        For HTTP-based types ('api', 'web'), also applies URL dedup
+        before delegating to the source.
         """
         task_type = task_config.get("type", "web")
 
-        if task_type == "sdk":
-            provider = SDKProvider()
-            return provider.call(task_config.get("provider", {}))
+        # URL dedup for HTTP types (SDK / file / db don't use URLs)
+        if task_type in ("api", "web"):
+            url = ctx.get("url") or task_config.get("url")
+            if self._url_dedup.is_duplicate(url):
+                logger.info("URL dedup skip: %s", url)
+                return None
+            logger.info("Request: %s %s", task_config.get("method", "GET"), url)
 
-        if task_type in ("csv", "excel"):
-            return self._file_reader.read(task_config.get("file", {}))
-
-        if task_type == "db":
-            # db.query 中的占位符已在 _resolve_all_templates 中替换
-            return self._db_reader.read(task_config.get("db", {}))
-
-        # HTTP / browser 请求
-        url = ctx.get("url") or task_config.get("url")
-        method = task_config.get("method", "GET")
-
-        if self._url_dedup.is_duplicate(url):
-            logger.info("URL 去重跳过: %s", url)
-            return None
-
-        logger.info("请求: %s %s", method, url)
-        return await self._fetch(task_config, url, method)
+        source = self._sources.get(task_type)
+        return await source.fetch(task_config, ctx)
 
     # ================================================================
-    # 输出展开：outputs 横切逻辑
+    # Output expansion
     # ================================================================
 
     def _resolve_outputs(self, task_config: dict) -> list[dict]:
-        """返回 outputs 配置列表（由 loader 统一包装为 outputs 格式）。"""
+        """Return outputs config list (loader wraps single-output as [output])."""
         return task_config.get("outputs", [])
-
-    # ================================================================
-    # 核心流水线：解析 → 清洗 → 注入 → 写入（唯一路径）
-    # ================================================================
-
-    def _process_output(self, raw_data, output_config: dict, db, ctx: dict) -> dict:
-        """
-        对单次获取的原始数据，按输出配置完成：解析 → 清洗 → 注入 source_url → 批量写入。
-
-        返回:
-            {"inserted": N, "updated": N, "total": N}
-        """
-        table = output_config["target_table"]
-        parser_config = output_config.get("parser", {})
-        parser_fields = parser_config.get("fields", [])
-        table_schema = output_config.get("table_schema", {})
-
-        # 动态建表（如果有 table_schema 配置）
-        if table_schema:
-            db.ensure_business_table(table, table_schema.get("columns", []),
-                                     table_schema.get("indexes", []))
-
-        # element_selector：提取页面级元素并注入到 context
-        element_selector_config = parser_config.get("element_selector", {})
-        if element_selector_config:
-            element_vars = self._parser.extract_element_vars(
-                raw_data, element_selector_config
-            )
-            # 注入到 context，供后续字段 value 占位符引用
-            ctx.update(element_vars)
-
-        # 解析
-        parsed = self._parser.parse_rows(raw_data, parser_config, context=ctx)
-        if not parsed:
-            return {"inserted": 0, "updated": 0, "total": 0}
-
-        # 清洗并过滤
-        cleaned = self._cleaner.clean_batch(parsed, parser_fields)
-
-        # 注入 source_url（如果字段配置中声明了 source_url）
-        src_field_names = Cleaner.field_names(parser_fields)
-        url = ctx.get("url", "")
-        if "source_url" in src_field_names and url:
-            for row in cleaned:
-                if "source_url" not in row:
-                    row["source_url"] = url
-
-        # 批量写入
-        result = db.insert_business_records_batch(table, cleaned)
-        return {"inserted": result["inserted"], "updated": result["updated"], "total": len(cleaned)}
-
-    # ================================================================
-    # HTTP 请求（保留原逻辑）
-    # ================================================================
-
-    async def _fetch(self, task_config: dict, url: str, method: str) -> str:
-        """统一请求入口：browser 模式 vs aiohttp 模式"""
-        browser_config = task_config.get("browser", {})
-        if browser_config:
-            bf = BrowserFetcher(headless=browser_config.get("headless", True))
-            try:
-                return await bf.fetch(url, browser_config)
-            finally:
-                await bf.close()
-
-        anti = AntiSpider(task_config.get("anti_spider", {}))
-        retry = task_config.get("retry", {})
-        encoding = task_config.get("encoding", 'utf-8')
-        fetcher = Fetcher(
-            max_retries=retry.get("max_attempts", 3),
-            backoff_base=retry.get("backoff_base", 2.0),
-        )
-        async with anti:
-            return await fetcher.fetch(url, method=method, encoding=encoding)

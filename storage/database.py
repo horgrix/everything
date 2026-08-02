@@ -6,7 +6,6 @@ SQLite 数据库管理模块
 import sqlite3
 import hashlib
 import os
-import threading
 from typing import Optional, Any
 
 # schema.sql 的路径（相对于本文件）
@@ -14,22 +13,22 @@ _SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema.sql")
 
 
 class Database:
-    """SQLite 数据库连接管理器，线程安全"""
+    """SQLite database connection manager (asyncio-safe, single connection)."""
 
     def __init__(self, db_path: str = "crawler.db"):
         self._db_path = db_path
-        self._local = threading.local()
+        self._conn: sqlite3.Connection | None = None
 
     @property
     def conn(self) -> sqlite3.Connection:
-        """获取当前线程的数据库连接（自动创建）"""
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path)
-            self._local.conn.row_factory = sqlite3.Row
-            self._local.conn.execute("PRAGMA foreign_keys = ON")
-            self._local.conn.execute("PRAGMA journal_mode = WAL")
-            self._local.conn.execute("PRAGMA busy_timeout = 5000")
-        return self._local.conn
+        """Lazy-initialize and return the database connection."""
+        if self._conn is None:
+            self._conn = sqlite3.connect(self._db_path)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA foreign_keys = ON")
+            self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA busy_timeout = 5000")
+        return self._conn
 
     def init_system_tables(self):
         """执行 schema.sql 初始化系统元数据表"""
@@ -306,6 +305,7 @@ class Database:
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def close(self):
-        if hasattr(self._local, "conn") and self._local.conn:
-            self._local.conn.close()
-            self._local.conn = None
+        """Close the database connection if open."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
