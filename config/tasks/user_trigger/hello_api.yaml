@@ -1,0 +1,38 @@
+name: "API 快速开始"
+type: api
+trigger_type: user
+method: GET
+url: "https://jsonplaceholder.typicode.com/posts/1"
+outputs:
+  - target_table: "hello_api"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: post_id
+          type: INTEGER NOT NULL
+        - name: title
+          type: TEXT
+        - name: body
+          type: TEXT
+        - name: source_url
+          type: TEXT NOT NULL
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      indexes:
+        - name: idx_post_id
+          columns: [post_id]
+          unique: true
+    parser:
+      type: json
+      fields:
+        - name: post_id
+          path: "id"
+          to_number: true
+        - name: title
+          path: "title"
+        - name: body
+          path: "body"
+        - name: source_url
+          value: "{url}"
