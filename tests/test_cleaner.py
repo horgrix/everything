@@ -60,16 +60,16 @@ class TestCleanField:
 
 
 class TestNumberExprToInt:
-    """Tests for _number_expr_to_int Chinese number parsing."""
+    """Tests for _rule_number_expr_to_int Chinese number parsing."""
 
     def test_plain_number(self, cleaner):
-        assert cleaner._number_expr_to_int("1234") == 1234
+        assert cleaner._rule_number_expr_to_int("1234", {}) == 1234
 
     def test_wan_unit(self, cleaner):
-        assert cleaner._number_expr_to_int("1234.56万") == 12345600
+        assert cleaner._rule_number_expr_to_int("1234.56万", {}) == 12345600
 
     def test_yi_unit(self, cleaner):
-        assert cleaner._number_expr_to_int("5.67亿") == 567000000
+        assert cleaner._rule_number_expr_to_int("5.67亿", {}) == 567000000
 
 
 class TestMatchConditions:

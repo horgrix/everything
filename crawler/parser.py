@@ -1,66 +1,181 @@
 """
-数据解析模块：将 HTML / JSON / SDK 响应解析为结构化 list[dict]。
+Data parser module: structured data extraction via pluggable strategies.
 
-支持的解析类型：
-  - json          : JSON 数组/对象，支持 root_path 定位
-  - css_selector  : HTML 单记录提取
-  - html_table    : HTML 表格多行解析
-  - sdk_mapping   : SDK 返回的 list[dict] 字段映射
+Parser types (row extraction strategies) and field extraction strategies
+are registered in dicts/lists — no if-else chains.  Add a new parser type
+or field strategy by calling register_*() methods.
 
-html_table 支持 element_selector：在表格之外提取页面级元素（如统计时间标题），
-提取结果注入 context 后可通过 value 占位符引用到每行数据中。
-
-核心入口：
-  - parse()            → 单记录模式（dict），内部委托给 parse_rows()
-  - parse_rows()       → 多记录模式（list[dict]），统一处理 JSON/HTML/SDK
-  - extract_element_vars() → 提取 element_selector 指定的页面级变量
+Built-in row extractors:   json, html_table, sdk_mapping
+Built-in field strategies: value placeholder, position index, HTML element, dict path/source
+Built-in filters:          skip_lines, head, tail
 """
 
 import logging
-import re as _re
+import json as _json
 from typing import Any
+from collections.abc import Callable
+
 from bs4 import BeautifulSoup
+
 logger = logging.getLogger(__name__)
+
+
+# ── Type aliases ──────────────────────────────────────────────
+
+RowExtractor = Callable[[Any, dict], list]
+"""raw_data + parser_config → list of raw rows"""
+
+FieldCondition = Callable[[dict, dict], bool]
+"""field_config + parser_config → True if this extractor applies"""
+
+FieldExtractor = Callable[[Any, dict, dict, dict], Any]
+"""raw_row + field_config + parser_config + context → extracted value"""
+
+FilterFn = Callable[[list[dict], int], list[dict]]
+"""rows + param_value → filtered rows"""
 
 
 class Parser:
     """
-    数据解析器。
+    Pluggable data parser with registry-based dispatch.
 
-    使用方式:
+    Usage:
         parser = Parser()
-        # 提取页面级元素
-        vars = parser.extract_element_vars(html, {
-            "stat_time": {"selector": "div.header span.time", "attr": "data-ts"}
-        })
-        # 多记录
-        rows = parser.parse_rows(json_text, {"type": "json", "root_path": "data.items", "fields": [...]})
+
+        # Register a custom row extractor
+        parser.register_row_extractor(
+            "xml", lambda raw, cfg: parse_xml_rows(raw)
+        )
+
+        # Register a custom field extractor (highest priority)
+        parser.register_field_extractor(
+            condition=lambda f, p: f.get("encrypted"),
+            extractor=lambda r, f, p, c: decrypt(r[f["source"]])
+        )
+
+        # Register a custom filter
+        parser.register_filter("sample", lambda rows, n: random.sample(rows, n))
     """
 
     def __init__(self):
-        pass
+        self._row_extractors: dict[str, RowExtractor] = {}
+        self._field_strategies: list[tuple[FieldCondition, FieldExtractor]] = []
+        self._filters: list[tuple[str, FilterFn]] = []
+        self._register_defaults()
 
-    # ================================================================
-    # element_selector：页面级元素提取（用于 html_table 等场景）
-    # ================================================================
+    # ── Public registration API ────────────────────────────────
 
-    def extract_element_vars(self, raw_html: str,
-                             element_selector_config: dict) -> dict:
+    def register_row_extractor(
+        self,
+        parser_type: str,
+        extractor: RowExtractor,
+    ) -> None:
         """
-        从 HTML 页面中提取 element_selector 指定的页面级变量。
+        Register a row extraction strategy for a parser type string.
 
-        YAML 配置示例:
-            element_selector:
-              stat_time:
-                selector: "div.header span.time"
-                attr: "data-timestamp"
-                strip: true
-                to_number: true
-              title:
-                selector: "h1.page-title"
-                strip: true
+        Args:
+            parser_type: Value of parser.type in YAML ("json", "html_table", …).
+            extractor:   (raw_data, parser_config) -> list of raw rows.
+        """
+        self._row_extractors[parser_type] = extractor
 
-        提取结果经过 Cleaner 清洗后返回 dict，可直接注入 context。
+    def register_field_extractor(
+        self,
+        condition: FieldCondition,
+        extractor: FieldExtractor,
+    ) -> None:
+        """
+        Append a field extraction strategy (appended last = lowest priority).
+
+        Args:
+            condition: (field_config, parser_config) -> True if applicable.
+            extractor: (raw_row, field_config, parser_config, context) -> value.
+        """
+        self._field_strategies.append((condition, extractor))
+
+    def register_field_extractor_first(
+        self,
+        condition: FieldCondition,
+        extractor: FieldExtractor,
+    ) -> None:
+        """
+        Prepend a field extraction strategy (prepended first = highest priority).
+        """
+        self._field_strategies.insert(0, (condition, extractor))
+
+    def register_filter(
+        self,
+        param_name: str,
+        filter_fn: FilterFn,
+    ) -> None:
+        """
+        Register a parser-level filter.
+
+        Args:
+            param_name: The key in parser.filters dict that activates this filter.
+            filter_fn:  (rows, param_value) -> filtered rows.
+        """
+        self._filters.append((param_name, filter_fn))
+
+    # ── Public entry points ────────────────────────────────────
+
+    def parse(
+        self,
+        raw_content: str,
+        parser_config: dict,
+        context: dict = None,
+    ) -> dict:
+        """Single-record mode: returns first row or {}."""
+        rows = self.parse_rows(raw_content, parser_config, context)
+        return rows[0] if rows else {}
+
+    def parse_rows(
+        self,
+        raw_content_or_data,
+        parser_config: dict,
+        context: dict = None,
+    ) -> list[dict]:
+        """
+        Parse raw data into rows using registry dispatch.
+
+        Steps:
+          1. Dispatch to the matching row extractor (no if-else).
+          2. Extract every field via the strategy chain.
+          3. Apply registered filters.
+        """
+        if context is None:
+            context = {}
+
+        parser_type = parser_config.get("type", "json")
+        fields = parser_config.get("fields", [])
+
+        # 1. Row extraction — dict lookup, zero if-blocks
+        extractor = self._row_extractors.get(
+            parser_type, self._extract_json_rows
+        )
+        raw_rows = extractor(raw_content_or_data, parser_config)
+
+        # 2. Field extraction — strategy chain
+        results = []
+        for row in raw_rows:
+            mapped = {}
+            for field in fields:
+                mapped[field["name"]] = self._extract_field_value(
+                    row, field, parser_config, context
+                )
+            results.append(mapped)
+
+        # 3. Filters
+        return self._apply_filters(results, parser_config)
+
+    def extract_element_vars(
+        self,
+        raw_html: str,
+        element_selector_config: dict,
+    ) -> dict:
+        """
+        Extract page-level variables from HTML via CSS selectors.
+        Values are returned raw (no cleaning — cleaning happens in DataPipeline).
         """
         if not element_selector_config or not raw_html:
             return {}
@@ -75,188 +190,173 @@ class Parser:
 
             selector = var_config.get("selector", "")
             if not selector:
-                logger.warning("element_selector '%s' 缺少 selector 配置", var_name)
+                logger.warning(
+                    "element_selector '%s' is missing 'selector'", var_name
+                )
                 continue
 
             elements = soup.select(selector)
             if not elements:
-                logger.warning("element_selector '%s' selector='%s' 未匹配到元素",
-                               var_name, selector)
+                logger.warning(
+                    "element_selector '%s' selector='%s' matched nothing",
+                    var_name, selector,
+                )
                 result[var_name] = ""
                 continue
 
-            # Extract value from the first matching element
             element = elements[0]
             attr = var_config.get("attr")
-            value = element.get(attr, "") if attr else element.get_text()
-            result[var_name] = value
+            result[var_name] = (
+                element.get(attr, "") if attr else element.get_text()
+            )
 
-        logger.debug("element_selector 提取结果: %s", result)
+        logger.debug("element_selector result: %s", result)
         return result
 
-    # ================================================================
-    # 公共入口
-    # ================================================================
+    # ── Strategy-chain field extraction ────────────────────────
 
-    def parse(self, raw_content: str, parser_config: dict, context: dict = None) -> dict:
-        """单记录模式，内部委托给 parse_rows 取第一条结果"""
-        rows = self.parse_rows(raw_content, parser_config, context)
-        return rows[0] if rows else {}
-
-    def parse_rows(self, raw_content_or_data, parser_config: dict,
-                   context: dict = None) -> list[dict]:
+    def _extract_field_value(
+        self,
+        row: Any,
+        field: dict,
+        parser_config: dict,
+        context: dict,
+    ) -> Any:
         """
-        统一的数组解析入口。根据 parser.type 自动路由到 JSON / HTML / SDK 提取策略。
-
-        返回:
-            list[dict] - 解析并过滤后的记录列表
+        Walk the field strategy chain and return the first non-None value.
+        No if-else — just iterate over (condition, extractor) pairs.
         """
-        if context is None:
-            context = {}
+        for condition, extractor in self._field_strategies:
+            if condition(field, parser_config):
+                value = extractor(row, field, parser_config, context)
+                if value is not None:
+                    return value
+        return None
 
-        parser_type = parser_config.get("type", "json")
-        fields = parser_config.get("fields", [])
+    # ── Filter dispatch ────────────────────────────────────────
 
-        # 1. 提取原始行数据
-        if parser_type == "html_table":
-            raw_rows = self._extract_html_table_rows(raw_content_or_data, parser_config)
-        elif parser_type == "sdk_mapping":
-            raw_rows = raw_content_or_data if isinstance(raw_content_or_data, list) else []
-        else:  # json (default)
-            raw_rows = self._extract_json_rows(raw_content_or_data, parser_config)
-
-        # 2. 逐行逐字段提取
-        results = []
-        for row in raw_rows:
-            mapped = {}
-            for field in fields:
-                mapped[field["name"]] = self._extract_field_value(
-                    row, field, parser_config, context
-                )
-            results.append(mapped)
-
-        # 3. 过滤
-        return self._apply_filters(results, parser_config)
+    def _apply_filters(
+        self, rows: list[dict], parser_config: dict
+    ) -> list[dict]:
+        """Apply every registered filter parameter present in config."""
+        filter_config = parser_config.get("filters", {})
+        for param_name, filter_fn in self._filters:
+            n = filter_config.get(param_name)
+            if n and n > 0:
+                rows = filter_fn(rows, n)
+        return rows
 
     # ================================================================
-    # 原始行提取器 —— 各 parser type 专有逻辑
+    # Default row extractor implementations
     # ================================================================
 
-    def _extract_json_rows(self, raw_content: str, parser_config: dict) -> list:
-        """从 JSON 字符串中提取行数据"""
-        import json
+    @staticmethod
+    def _extract_json_rows(raw_content: str, parser_config: dict) -> list:
+        """Parse JSON and navigate to root_path."""
         try:
-            data = json.loads(raw_content)
-        except json.JSONDecodeError as e:
-            logger.error("JSON 解析失败: %s", e)
+            data = _json.loads(raw_content)
+        except _json.JSONDecodeError as e:
+            logger.error("JSON parse failed: %s", e)
             return []
 
         root_path = parser_config.get("root_path", "")
         if root_path:
             try:
-                records = self._get_nested_value(data, root_path)
+                records = Parser._get_nested_value(data, root_path)
             except (KeyError, IndexError, TypeError) as e:
-                logger.error("无法定位 root_path '%s': %s", root_path, e)
+                logger.error("Cannot resolve root_path '%s': %s", root_path, e)
                 return []
         else:
             records = data
 
         if isinstance(records, dict):
-            records = [records]
-        elif not isinstance(records, list):
-            logger.error("数据不是数组或对象，类型为 %s", type(records).__name__)
+            return [records]
+        if not isinstance(records, list):
+            logger.error("Data is not a list or dict, got %s", type(records).__name__)
             return []
-
         return records
 
-    def _extract_html_table_rows(self, html: str, parser_config: dict) -> list:
-        """从 HTML 中按 row_selector 提取行元素"""
+    @staticmethod
+    def _extract_html_table_rows(html: str, parser_config: dict) -> list:
+        """Extract <tr> elements matching row_selector."""
         row_selector = parser_config.get("row_selector", "")
         if not row_selector:
-            logger.error("html_table 需要 row_selector 配置")
+            logger.error("html_table requires 'row_selector'")
             return []
 
         soup = BeautifulSoup(html, "lxml")
         rows = soup.select(row_selector)
         if not rows:
-            logger.warning("row_selector '%s' 未匹配到任何行", row_selector)
-        return rows  # 返回 BeautifulSoup 元素列表
+            logger.warning("row_selector '%s' matched nothing", row_selector)
+        return rows  # BeautifulSoup elements
+
+    @staticmethod
+    def _passthrough_list(data, _parser_config: dict) -> list:
+        """Pass through data that is already a list (sdk_mapping)."""
+        return data if isinstance(data, list) else []
 
     # ================================================================
-    # 字段值提取器 —— 统一处理所有 field 配置
+    # Default field extraction implementations
     # ================================================================
 
-    def _extract_field_value(self, row, field: dict, parser_config: dict,
-                              context: dict) -> Any:
-        """
-        从一行的原始数据中提取单个字段值。
-        支持策略（按优先级）：value 占位符 > position 索引 > column+selector 组合 > path 路径 > source 映射
-        """
-        # 1. 静态值 / 占位符
-        if "value" in field:
-            return self._resolve_value(field["value"], context)
+    @staticmethod
+    def _cond_has_value(field: dict, _parser_config: dict) -> bool:
+        return "value" in field
 
-        parser_type = parser_config.get("type", "json")
-        index_mapping = parser_config.get("array_index_mapping", False)
+    @staticmethod
+    def _extract_value(_row, field: dict, _pc: dict, context: dict) -> str:
+        val = field["value"]
+        if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+            return context.get(val[1:-1], val)
+        return val
 
-        # 2. JSON 二维数组：position 索引
-        if index_mapping and parser_type != "html_table":
-            pos = field.get("position")
-            if pos is not None and isinstance(row, list) and pos < len(row):
-                return row[pos]
-            return None
+    @staticmethod
+    def _cond_position_index(field: dict, parser_config: dict) -> bool:
+        return bool(
+            parser_config.get("array_index_mapping")
+            and field.get("position") is not None
+            and parser_config.get("type") != "html_table"
+        )
 
-        # 3. HTML 表格/元素提取
-        if parser_type in ("html_table", "html", "css_selector"):
-            return self._extract_html_field(row, field)
-
-        # 4. dict 模式：path（json）或 source（sdk_mapping）
-        if isinstance(row, dict):
-            # source 映射优先
-            source = field.get("source")
-            if source and source in row:
-                return row[source]
-            # path 提取
-            json_path = field.get("path") or field.get("selector")
-            if json_path:
-                try:
-                    return self._get_nested_value(row, json_path)
-                except (KeyError, IndexError, TypeError):
-                    pass
+    @staticmethod
+    def _extract_position(row, field: dict, _pc, _ctx) -> Any:
+        if isinstance(row, list) and field["position"] < len(row):
+            return row[field["position"]]
         return None
 
-    def _extract_html_field(self, element, field: dict) -> Any:
-        """从 BeautifulSoup 元素中提取字段值"""
+    @staticmethod
+    def _cond_is_html(field: dict, parser_config: dict) -> bool:
+        return parser_config.get("type") in ("html_table", "html", "css_selector")
+
+    @staticmethod
+    def _extract_html_field(row, field: dict, _pc, _ctx) -> Any:
         col_index = field.get("column")
         selector = field.get("selector")
 
-        # 有 column + selector：先定位 td，再提取子元素
+        # column specified → locate td/th first
         if col_index is not None:
-            cells = element.select("td, th")
+            cells = row.select("td, th")
             if col_index >= len(cells):
                 return None
             target = cells[col_index]
             if selector:
-                elements = target.select(selector)
-                if elements:
-                    return self._get_element_value(elements[0], field)
-                return None
-            return self._get_element_value(target, field)
+                els = target.select(selector)
+                return Parser._get_element_value(els[0], field) if els else None
+            return Parser._get_element_value(target, field)
 
-        # 仅 selector：在当前元素内查找
+        # selector only → search within element
         if selector:
-            elements = element.select(selector)
-            if elements:
+            els = row.select(selector)
+            if els:
                 if field.get("multiple"):
-                    return [self._get_element_value(el, field) for el in elements]
-                return self._get_element_value(elements[0], field)
+                    return [Parser._get_element_value(el, field) for el in els]
+                return Parser._get_element_value(els[0], field)
             return None
 
-        return self._get_element_value(element, field)
+        return Parser._get_element_value(row, field)
 
     @staticmethod
     def _get_element_value(element, field: dict) -> str:
-        """从 BeautifulSoup 元素获取文本或属性值"""
         attr = field.get("attr")
         value = element.get(attr, "") if attr else element.get_text()
         if field.get("strip", True) and isinstance(value, str):
@@ -264,8 +364,49 @@ class Parser:
         return value
 
     @staticmethod
+    def _cond_is_dict(field: dict, _parser_config: dict) -> bool:
+        return True  # fallthrough: handles JSON path + SDK source mapping
+
+    @staticmethod
+    def _extract_dict_field(row, field: dict, _pc, _ctx) -> Any:
+        if not isinstance(row, dict):
+            return None
+        # source mapping takes priority
+        source = field.get("source")
+        if source and source in row:
+            return row[source]
+        # path-based extraction
+        json_path = field.get("path") or field.get("selector")
+        if json_path:
+            try:
+                return Parser._get_nested_value(row, json_path)
+            except (KeyError, IndexError, TypeError):
+                pass
+        return None
+
+    # ================================================================
+    # Default filter implementations
+    # ================================================================
+
+    @staticmethod
+    def _filter_skip_lines(rows: list[dict], n: int) -> list[dict]:
+        return rows[n:]
+
+    @staticmethod
+    def _filter_head(rows: list[dict], n: int) -> list[dict]:
+        return rows[:n]
+
+    @staticmethod
+    def _filter_tail(rows: list[dict], n: int) -> list[dict]:
+        return rows[-n:]
+
+    # ================================================================
+    # Utility
+    # ================================================================
+
+    @staticmethod
     def _get_nested_value(data: Any, path: str) -> Any:
-        """支持点号分隔的嵌套路径，如 "data.items.0.title" """
+        """Resolve dotted path like 'data.items.0.title'."""
         current = data
         for key in path.split("."):
             if isinstance(current, list):
@@ -273,23 +414,26 @@ class Parser:
             current = current[key]
         return current
 
-    @staticmethod
-    def _resolve_value(value: str, context: dict) -> str:
-        if isinstance(value, str) and value.startswith("{") and value.endswith("}"):
-            return context.get(value[1:-1], value)
-        return value
+    # ================================================================
+    # Registration
+    # ================================================================
 
-    @staticmethod
-    def _apply_filters(rows: list[dict], parser_config: dict) -> list[dict]:
-        filters = parser_config.get("filters", {})
-        if not filters:
-            return rows
+    def _register_defaults(self) -> None:
+        """Wire up all built-in extractors and filters."""
+        # Row extractors — keyed by parser.type
+        self.register_row_extractor("json", self._extract_json_rows)
+        self.register_row_extractor("html_table", self._extract_html_table_rows)
+        self.register_row_extractor("css_selector", self._extract_html_table_rows)
+        self.register_row_extractor("html", self._extract_html_table_rows)
+        self.register_row_extractor("sdk_mapping", self._passthrough_list)
 
-        if (n := filters.get("skip_lines")) and n > 0:
-            rows = rows[n:]
-        if (n := filters.get("head")) and n > 0:
-            rows = rows[:n]
-        if (n := filters.get("tail")) and n > 0:
-            rows = rows[-n:]
+        # Field strategies — ordered from highest to lowest priority
+        self.register_field_extractor(self._cond_has_value, self._extract_value)
+        self.register_field_extractor(self._cond_position_index, self._extract_position)
+        self.register_field_extractor(self._cond_is_html, self._extract_html_field)
+        self.register_field_extractor(self._cond_is_dict, self._extract_dict_field)
 
-        return rows
+        # Filters
+        self.register_filter("skip_lines", self._filter_skip_lines)
+        self.register_filter("head", self._filter_head)
+        self.register_filter("tail", self._filter_tail)
