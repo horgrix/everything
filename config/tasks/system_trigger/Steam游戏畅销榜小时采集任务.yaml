@@ -3,7 +3,7 @@ type: web
 method: GET
 browser:
   headless: true
-  wait_selector: "table._3arZn0BMPzyhcYNADe193m"
+  wait_selector: "table.cCE5WXLdwQ4-"
   wait_timeout: 15000
   # screenshot: "debug_steam.html"
   actions:
@@ -36,7 +36,7 @@ outputs:
           unique: true
     parser:
       type: html_table
-      row_selector: "table._3arZn0BMPzyhcYNADe193m tbody tr"
+      row_selector: "table.cCE5WXLdwQ4- tbody tr"
       fields:
         - name: steam_id
           column: 2
