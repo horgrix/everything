@@ -1,8 +1,7 @@
 name: Taptap热门游戏排行榜采集任务
 type: api
 method: GET
-trigger_type: system
-schedule: 0 20 * * 1-5
+trigger_type: user
 iterate:
   - var_name: "from"
     values:
