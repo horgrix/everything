@@ -375,6 +375,7 @@ API 和调度器共享同一个 asyncio 事件循环，无需额外进程。
 | `GET` | `/api/data/{table}/columns` | 获取表列元数据（列名、类型、约束） |
 | `GET` | `/api/data/{table}/query` | **通用查询**（支持 fields/where/group_by/aggregate/order_by/limit/offset） |
 | `GET` | `/api/data/{table}/count` | 获取表行数（支持 where 条件计数） |
+| `POST` | `/api/data/sql` | 直接执行只读 SQL 查询（SELECT/WITH/EXPLAIN/PRAGMA） |
 | `GET` | `/api/system/status` | 系统状态（任务总数/启用数/业务表数/DB 大小/路径） |
 | `GET` | `/api/system/dashboard` | **仪表盘聚合统计**（近7天执行趋势 + 状态分布） |
 | `GET` | `/api/system/health` | 健康检查 |

@@ -464,6 +464,7 @@ config.get("url")     # 等价于 config.url
 | `PUT` | `/api/data/{table}/rows/{col}/{val}` | 更新单行 |
 | `DELETE` | `/api/data/{table}/rows/{col}/{val}` | 删除单行 |
 | `DELETE` | `/api/data/{table}/rows` | 清空表 |
+| `POST` | `/api/data/sql` | 直接执行只读 SQL 查询（SELECT/WITH/EXPLAIN/PRAGMA） |
 | `GET` | `/api/logs` | 执行日志（按 task/status 过滤，分页） |
 | `GET` | `/api/logs/{id}` | 单条日志详情 |
 | `GET` | `/api/system/status` | 系统状态（任务数、表数、DB 大小） |

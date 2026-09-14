@@ -3,6 +3,7 @@
 import json
 import re
 import logging
+import sqlite3
 from fastapi import APIRouter, Request, Query, HTTPException
 from pydantic import BaseModel
 
@@ -12,6 +13,9 @@ router = APIRouter()
 
 _VALID_OPS = {"=", "!=", "<>", ">", "<", ">=", "<=", "IN", "NOT IN", "LIKE", "NOT LIKE",
               "IS NULL", "IS NOT NULL", "BETWEEN"}
+
+# 允许直接执行的只读 SQL 前缀（拒绝写操作）
+_READONLY_SQL_PREFIXES = {"SELECT", "WITH", "EXPLAIN", "PRAGMA"}
 
 
 def _get_db(request: Request):
@@ -129,6 +133,20 @@ def _build_select_clause(fields: str, valid_columns: set[str]) -> str:
     return ", ".join(selected) if selected else "*"
 
 
+def _validate_readonly_sql(sql: str) -> str:
+    """校验 SQL 为只读语句，返回去除首尾空白后的 SQL。"""
+    sql = (sql or "").strip()
+    if not sql:
+        raise HTTPException(status_code=400, detail="SQL 不能为空")
+    first_word = sql.split(None, 1)[0].upper()
+    if first_word not in _READONLY_SQL_PREFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"仅允许只读查询语句 (SELECT/WITH/EXPLAIN/PRAGMA)，收到: {first_word}",
+        )
+    return sql
+
+
 # ================================================================
 # Routes
 # ================================================================
@@ -144,6 +162,33 @@ async def list_tables(request: Request):
         "AND name NOT LIKE 'dedup_%' ORDER BY name"
     ).fetchall()
     return {"code": 0, "message": "success", "data": [r["name"] for r in rows]}
+
+
+class SqlQueryRequest(BaseModel):
+    sql: str
+
+
+@router.post("/sql")
+async def query_raw_sql(request: Request, body: SqlQueryRequest):
+    """
+    直接执行只读 SQL 查询，返回 [{列: 值}, ...] 格式的 JSON 数据。
+
+    Body:
+        {"sql": "SELECT * FROM taptap_hot_list_game_hourly LIMIT 10"}
+
+    仅允许 SELECT / WITH / EXPLAIN / PRAGMA 开头的只读语句，
+    拒绝 INSERT / UPDATE / DELETE / DROP 等写操作。
+    """
+    db = _get_db(request)
+    sql = _validate_readonly_sql(body.sql)
+
+    try:
+        rows = db.conn.execute(sql).fetchall()
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=400, detail=f"SQL 执行失败: {e}")
+
+    data = [dict(r) for r in rows]
+    return {"code": 0, "message": "success", "data": data, "total": len(data)}
 
 
 @router.get("/{table_name}/columns")
