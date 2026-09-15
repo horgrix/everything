@@ -17,7 +17,14 @@ def main() -> None:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(f"SELECT * FROM {TABLE} WHERE id > 100").fetchall()
+        # 排除 id 列，仅导出业务字段
+        columns = [
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({TABLE})").fetchall()
+            if row["name"] != "id"
+        ]
+        select_clause = ", ".join(columns)
+        rows = conn.execute(f"SELECT {select_clause} FROM {TABLE}").fetchall()
     finally:
         conn.close()
 
