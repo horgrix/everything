@@ -15,7 +15,11 @@ iterate:
       - 70
       - 80     
       - 90    
-url: https://www.taptap.cn/webapiv2/app-top/v2/hits?from={from}&limit=10&type_name=hot&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DAndroid%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
+  - var_name: "platform"
+    values: 
+      - "android"
+      - "ios"
+url: https://www.taptap.cn/webapiv2/app-top/v2/hits?from={from}&limit=10&platform={platform}&type_name=hot&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DAndroid%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
 - target_table: taptap_hot_list_game_hourly
   table_schema:
@@ -51,7 +55,7 @@ outputs:
     - columns:
       - app_id
       - crawled_at
-      name: idx_uk_end_of_date
+      name: idx_uk_app_id_crawled_at
       unique: true
   parser:
     type: json
