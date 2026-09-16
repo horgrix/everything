@@ -1,0 +1,87 @@
+name: Taptap热门游戏额外补充采集任务
+type: api
+method: GET
+trigger_type: user
+iterate:
+  - var_name: "app_id"
+    values:
+      - 748031       
+url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
+outputs:
+- target_table: taptap_hot_list_game_hourly
+  table_schema:
+    columns:
+    - constraint: PRIMARY KEY AUTOINCREMENT
+      name: id
+      type: INTEGER
+    - name: app_id
+      type: INTEGER
+    - name: app_name
+      type: TEXT
+    - name: released_time
+      type: INTEGER
+    - name: pc_download_count
+      type: INTEGER
+    - name: hits_total
+      type: INTEGER
+    - name: hits_total_val
+      type: INTEGER
+    - name: fans_count
+      type: INTEGER
+    - name: review_count
+      type: INTEGER
+    - name: wish_count
+      type: INTEGER
+    - name: topic_count
+      type: INTEGER
+    - name: official_topic_count
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+    indexes:
+    - columns:
+      - app_id
+      - crawled_at
+      name: idx_uk_app_id_crawled_at
+      unique: true
+  parser:
+    type: json
+    root_path: "data.list" 
+    fields:
+    - name: released_time
+      path: moment.app.released_time
+      to_number: true
+    - name: app_id
+      path: moment.app.id
+      to_number: true
+    - name: app_name
+      path: moment.app.title
+    - name: pc_download_count
+      path: moment.app.stat.pc_download_count
+      to_number: true
+    - name: hits_total
+      path: moment.app.stat.hits_total
+      to_number: true
+    - name: hits_total_val
+      path: moment.app.stat.hits_total_val
+      to_number: true
+    - name: fans_count
+      path: moment.app.stat.fans_count
+      to_number: true
+    - name: review_count
+      path: moment.app.stat.review_count
+      to_number: true
+    - name: wish_count
+      path: moment.app.stat.wish_count
+      to_number: true
+    - name: topic_count
+      path: moment.app.stat.topic_count
+      to_number: true
+    - name: official_topic_count
+      path: moment.app.stat.official_topic_count
+      to_number: true
+retry:
+  backoff_base: 2.0
+  max_attempts: 3
+anti_spider:
+  enabled: false
