@@ -266,6 +266,11 @@ class TaskConfig(_ConfigBase):
     def retry(self) -> dict: return self._raw.get("retry", {})
 
     @property
+    def request_interval(self) -> float:
+        """每次 iterate 请求之间的固定间隔（秒），0 表示不等待。"""
+        return self._raw.get("request_interval", 0)
+
+    @property
     def provider(self) -> dict: return self._raw.get("provider", {})
 
     @property

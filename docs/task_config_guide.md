@@ -1003,6 +1003,18 @@ iterate:
 2. 每个 context 独立执行（含反爬延迟、重试）
 3. 所有结果汇总后返回
 
+**请求间隔（限流）**——为避免目标站点限制访问，可配置每个 iterate 请求之间的固定等待秒数：
+
+```yaml
+iterate:
+  - var_name: "app_id"
+    values: [748031, 6974, 7054]
+
+request_interval: 1          # 每次 iterate 请求之间固定等待 1 秒
+```
+
+> `request_interval` 为顶层字段，单位秒，默认 `0`（不等待）。仅在存在多个 iterate context 时生效。
+>
 > 配合浏览器模式时，每个 iterate 都会启动独立浏览器上下文，开销较大。建议合理控制 `values` 数量。
 
 ---

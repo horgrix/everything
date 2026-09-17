@@ -6,6 +6,7 @@ All tasks converge into a single pipeline:
   output expansion (outputs) → parse → clean → write
 """
 
+import asyncio
 import logging
 import itertools
 from .dedup import URLDedup
@@ -65,8 +66,16 @@ class CrawlerEngine:
         contexts = self._build_iterate_contexts(task_config, base_context)
         total = PipelineResult()
         error_msg = None
+        request_interval = float(task_config.get("request_interval", 0) or 0)
 
         for idx, ctx in enumerate(contexts):
+            # 每个 iterate 请求之间的固定间隔，用于限流 / 避免被限制访问
+            if idx > 0 and request_interval > 0:
+                logger.debug(
+                    "Iterate request interval: waiting %.2fs", request_interval
+                )
+                await asyncio.sleep(request_interval)
+
             # Resolve template variables in all context values before fetch
             ctx = self._resolve_all_templates(ctx)
 
