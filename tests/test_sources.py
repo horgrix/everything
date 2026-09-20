@@ -1,10 +1,14 @@
 """Tests for the data source abstraction layer."""
 
+import asyncio
+from datetime import datetime
+
 import pytest
 from crawler.sources.base import SourceRegistry
 from crawler.sources.http_source import HttpSource
 from crawler.sources.sdk_source import SdkSource
 from crawler.sources.file_source import FileSource
+from crawler.sources.db_source import DbSource
 
 
 class TestSourceRegistry:
@@ -51,3 +55,53 @@ class TestSdkNormalize:
     def test_scalar_wraps(self):
         result = SdkSource._normalize(42)
         assert result == [{"value": 42}]
+
+
+class TestDbSourceQueryTemplate:
+    """Tests for template variable resolution in DbSource.query."""
+
+    def test_query_resolves_template(self, monkeypatch):
+        captured = {}
+
+        def fake_read_sync(db_config):
+            captured["query"] = db_config.get("query", "")
+            return []
+
+        monkeypatch.setattr(DbSource, "_read_sync", staticmethod(fake_read_sync))
+
+        source = DbSource()
+        query = "SELECT * FROM t WHERE d = '{today}'"
+        asyncio.run(
+            source.fetch(
+                {
+                    "type": "db",
+                    "db": {"type": "sqlite", "path": "x.db", "query": query},
+                },
+                {"task_name": "t"},
+            )
+        )
+
+        expected = (
+            "SELECT * FROM t WHERE d = '"
+            + datetime.now().strftime("%Y-%m-%d")
+            + "'"
+        )
+        assert captured["query"] == expected
+
+    def test_query_resolves_context_var(self, monkeypatch):
+        captured = {}
+
+        def fake_read_sync(db_config):
+            captured["query"] = db_config.get("query", "")
+            return []
+
+        monkeypatch.setattr(DbSource, "_read_sync", staticmethod(fake_read_sync))
+
+        source = DbSource()
+        asyncio.run(
+            source.fetch(
+                {"type": "db", "db": {"type": "sqlite", "query": "SELECT {region}"}},
+                {"region": "CN"},
+            )
+        )
+        assert captured["query"] == "SELECT CN"

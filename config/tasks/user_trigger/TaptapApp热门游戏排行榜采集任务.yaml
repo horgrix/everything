@@ -1,4 +1,4 @@
-name: Taptap热门游戏排行榜采集任务
+name: TaptapApp热门游戏排行榜采集任务
 type: api
 method: GET
 trigger_type: user
@@ -14,25 +14,37 @@ iterate:
       - 60    
       - 70
       - 80     
-      - 90    
+      - 90  
+      - 100
+      - 110
+      - 120
+      - 130
+      - 140
   - var_name: "platform"
     values: 
       - "android"
-      - "ios"
+      - "ios"  
+request_interval: 1
 url: https://www.taptap.cn/webapiv2/app-top/v2/hits?from={from}&limit=10&platform={platform}&type_name=hot&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DAndroid%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
-- target_table: taptap_hot_list_game_hourly
+- target_table: taptap_app_hot_list_hourly
   table_schema:
     columns:
     - constraint: PRIMARY KEY AUTOINCREMENT
       name: id
       type: INTEGER
+    - name: distribution_type
+      type: INTEGER
+    - name: tag_1
+      type: TEXT
+    - name: tag_2
+      type: TEXT
+    - name: tag_3
+      type: TEXT
     - name: app_id
       type: INTEGER
     - name: app_name
       type: TEXT
-    - name: released_time
-      type: INTEGER
     - name: pc_download_count
       type: INTEGER
     - name: hits_total
@@ -45,25 +57,27 @@ outputs:
       type: INTEGER
     - name: wish_count
       type: INTEGER
-    - name: topic_count
-      type: INTEGER
-    - name: official_topic_count
-      type: INTEGER
     - name: crawled_at
       type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
     indexes:
-    - columns:
-      - app_id
-      - crawled_at
-      name: idx_uk_app_id_crawled_at
+    - name: idx_uk_taptap_app_hot_list_hourly_crawled_at_app_id
+      columns: [crawled_at, app_id]
       unique: true
+    - name: idx_query_taptap_app_hot_list_hourly_crawled_at_distribution_type
+      columns: [crawled_at, distribution_type]
   parser:
     type: json
     root_path: "data.list" 
     fields:
-    - name: released_time
-      path: app.released_time
-      to_number: true
+    - name: distribution_type
+      path: app.level_info.distribution_type
+      default: 0
+    - name: tag_1
+      path: app.tags.0.value
+    - name: tag_2
+      path: app.tags.1.value
+    - name: tag_3
+      path: app.tags.2.value
     - name: app_id
       path: app.id
       to_number: true
@@ -86,12 +100,6 @@ outputs:
       to_number: true
     - name: wish_count
       path: app.stat.wish_count
-      to_number: true
-    - name: topic_count
-      path: app.stat.topic_count
-      to_number: true
-    - name: official_topic_count
-      path: app.stat.official_topic_count
       to_number: true
 retry:
   backoff_base: 2.0

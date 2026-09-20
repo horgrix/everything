@@ -1,4 +1,4 @@
-name: TaptapPC热门游戏统计数据采集任务
+name: TaptapPC热门游戏统计数据采集任务NEW
 type: api
 method: GET
 trigger_type: user
@@ -17,6 +17,7 @@ iterate:
   - 84463
   - 130651
   - 139301
+  - 141289
   - 145396
   - 146791
   - 161414
@@ -30,16 +31,15 @@ iterate:
   - 190930
   - 191385
   - 192675
-  - 195928
   - 202416
   - 202514
   - 203729
   - 207018
+  - 209273
   - 209866
   - 213181
   - 214603
   - 218210
-  - 219503
   - 221380
   - 221583
   - 222089
@@ -49,7 +49,6 @@ iterate:
   - 229966
   - 231537
   - 232326
-  - 233514
   - 233558
   - 234280
   - 234493
@@ -70,12 +69,12 @@ iterate:
   - 383413
   - 387264
   - 388717
+  - 498636
   - 524022
   - 550307
   - 613799
   - 617522
   - 622867
-  - 708799
   - 708927
   - 711932
   - 712207
@@ -83,13 +82,13 @@ iterate:
   - 714123
   - 719426
   - 719781
+  - 720041
   - 723266
   - 732013
   - 733498
   - 733908
   - 737341
   - 737825
-  - 741793
   - 744415
   - 746164
   - 747914
@@ -97,11 +96,12 @@ iterate:
   - 749379
   - 751890
   - 751902
-  - 751906
   - 751919
   - 752178
+  - 752180
   - 752573
   - 752978
+  - 753375
   - 755439
   - 755604
   - 759688
@@ -109,16 +109,16 @@ iterate:
   - 760944
   - 766061
   - 768687
-  - 771648
   - 772303
   - 774226
   - 775179
   - 820664
   - 840947
-request_interval: 2
+  - 887316
+request_interval: 1
 url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
-- target_table: taptap_hot_list_game_hourly
+- target_table: taptap_pc_hot_list_hourly
   table_schema:
     columns:
     - constraint: PRIMARY KEY AUTOINCREMENT
@@ -128,8 +128,14 @@ outputs:
       type: INTEGER
     - name: app_name
       type: TEXT
-    - name: released_time
+    - name: distribution_type
       type: INTEGER
+    - name: tag_1
+      type: TEXT
+    - name: tag_2
+      type: TEXT
+    - name: tag_3
+      type: TEXT
     - name: pc_download_count
       type: INTEGER
     - name: hits_total
@@ -142,25 +148,31 @@ outputs:
       type: INTEGER
     - name: wish_count
       type: INTEGER
-    - name: topic_count
-      type: INTEGER
-    - name: official_topic_count
-      type: INTEGER
     - name: crawled_at
       type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
     indexes:
-    - columns:
-      - app_id
+    - name: idx_uk_taptap_pc_hot_list_hourly_crawled_at_app_id
+      columns:
       - crawled_at
-      name: idx_uk_app_id_crawled_at
+      - app_id
       unique: true
+    - name: idx_query_taptap_pc_hot_list_hourly_crawled_at_distribution_type
+      columns:
+      - crawled_at
+      - distribution_type
   parser:
     type: json
     root_path: data.list
     fields:
-    - name: released_time
-      path: moment.app.released_time
-      to_number: true
+    - name: distribution_type
+      path: moment.app.level_info.distribution_type
+      default: 0
+    - name: tag_1
+      path: moment.app.tags.0.value
+    - name: tag_2
+      path: moment.app.tags.1.value
+    - name: tag_3
+      path: moment.app.tags.2.value
     - name: app_id
       path: moment.app.id
       to_number: true
@@ -183,12 +195,6 @@ outputs:
       to_number: true
     - name: wish_count
       path: moment.app.stat.wish_count
-      to_number: true
-    - name: topic_count
-      path: moment.app.stat.topic_count
-      to_number: true
-    - name: official_topic_count
-      path: moment.app.stat.official_topic_count
       to_number: true
 retry:
   backoff_base: 2.0

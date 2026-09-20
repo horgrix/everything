@@ -59,6 +59,9 @@ config/secrets.yaml
 *.db-wal
 crawler.db
 
+# sqlite cli (本地工具，不提交)
+sqlite3.exe
+
 # browser driver
 chromedriver.exe
 

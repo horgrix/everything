@@ -12,6 +12,7 @@ import os
 from typing import Any
 
 from .base import DataSource
+from ..template import URLTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +31,15 @@ class DbSource(DataSource):
     # ---- DataSource interface ----
 
     async def fetch(self, task_config: dict, context: dict) -> list[dict]:
-        """Execute DB query in a thread, return list[dict]."""
-        db_config = task_config.get("db", {})
+        """Execute DB query in a thread, return list[dict].
+
+        The `db.query` supports template variables ({today}/{yesterday}/...),
+        resolved against the runtime context before execution.
+        """
+        db_config = dict(task_config.get("db", {}))
+        db_config["query"] = URLTemplate.resolve(
+            db_config.get("query", ""), context=context or {}
+        )
         return await asyncio.to_thread(self._read_sync, db_config)
 
     # ---- Internal ----

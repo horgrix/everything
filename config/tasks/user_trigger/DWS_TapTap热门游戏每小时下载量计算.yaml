@@ -1,0 +1,120 @@
+name: "DWS_TapTap热门游戏每小时下载量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT * FROM
+    (SELECT 
+      app_id,
+      crawled_at,
+      distribution_type,
+      "pc" as refer,
+      wish_count as total_wish_count,
+      wish_count - LAG(wish_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS wish_count,
+      review_count as total_review_count,
+      review_count - LAG(review_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS review_count,
+      fans_count as total_fans_count,
+      fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
+      pc_download_count as total_download_count,
+      pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+    FROM taptap_pc_hot_list_hourly 
+    WHERE app_id IS NOT NULL
+    ORDER BY app_id, crawled_at) as t1
+    UNION ALL
+    SELECT * FROM
+    (SELECT 
+      app_id,
+      crawled_at,
+      distribution_type,
+      "app" as refer,
+      wish_count as total_wish_count,
+      wish_count - LAG(wish_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS wish_count,
+      review_count as total_review_count,
+      review_count - LAG(review_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS review_count,
+      fans_count as total_fans_count,
+      fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
+      hits_total as total_download_count,
+      hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+    FROM taptap_app_hot_list_hourly
+    WHERE app_id IS NOT NULL
+    ORDER BY app_id, crawled_at) as t2
+trigger_type: user
+outputs:
+  - target_table: "dws_taptap_download_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: distribution_type
+          type: INTEGER
+        - name: refer
+          type: TEXT
+        - name: total_wish_count
+          type: INTEGER
+        - name: wish_count
+          type: INTEGER
+        - name: total_review_count
+          type: INTEGER
+        - name: review_count
+          type: INTEGER
+        - name: total_fans_count
+          type: INTEGER
+        - name: fans_count
+          type: INTEGER
+        - name: total_download_count
+          type: INTEGER
+        - name: download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_crawled_at_refer_distribution_type_app_id
+          columns: [crawled_at, refer, distribution_type, app_id]
+          unique: true
+        - name: idx_qy_crawled_at_app_id
+          columns: [crawled_at, app_id]
+        - name: idx_qy_crawled_at_refer_app_id
+          columns: [crawled_at, refer, app_id]
+        - name: idx_qy_crawled_at_distribution_type_app_id
+          columns: [crawled_at, distribution_type, app_id]
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true   
+        - name: distribution_type
+          source: distribution_type
+          to_number: true     
+        - name: refer
+          source: refer
+        - name: total_wish_count
+          source: total_wish_count
+          to_number: true
+        - name: wish_count
+          source: wish_count
+          to_number: true
+        - name: total_review_count
+          source: total_review_count
+          to_number: true
+        - name: review_count
+          source: review_count
+          to_number: true
+        - name: total_fans_count
+          source: total_fans_count
+          to_number: true
+        - name: fans_count
+          source: fans_count
+          to_number: true
+        - name: total_download_count
+          source: total_download_count
+          to_number: true
+        - name: download_count
+          source: download_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

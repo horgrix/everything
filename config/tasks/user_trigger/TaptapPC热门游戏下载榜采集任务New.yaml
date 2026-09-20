@@ -1,4 +1,4 @@
-name: TaptapPC热门游戏下载榜采集任务
+name: TaptapPC热门游戏下载榜采集任务NEW
 type: api
 method: GET
 trigger_type: user
@@ -19,7 +19,7 @@ iterate:
 request_interval: 1
 url: https://www.taptap.cn/webapiv2/pc-game/v1/list?from={from}&limit=10&type=hot&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DAndroid%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
-- target_table: taptap_pc_hot_list_daily
+- target_table: taptap_pc_hot_list_ids_hourly
   table_schema:
     columns:
     - name: app_id
@@ -27,10 +27,8 @@ outputs:
     - name: crawled_at
       type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
     indexes:
-    - columns:
-      - app_id
-      - crawled_at
-      name: idx_uk_app_id_crawled_at
+    - name: idx_uk_taptap_pc_hot_list_ids_hourly_crawled_at_app_id
+      columns: [crawled_at, app_id]
       unique: true
   parser:
     type: json

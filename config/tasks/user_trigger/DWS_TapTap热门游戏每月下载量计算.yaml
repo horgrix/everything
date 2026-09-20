@@ -1,0 +1,117 @@
+name: "DWS_TapTap热门游戏每月下载量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      app_id,
+      substr(crawled_at, 1, 7) as crawled_at,
+      SUM(wish_count) as wish_count,
+      MAX(total_wish_count) as total_wish_count,
+      SUM(review_count) as review_count,
+      MAX(total_review_count) as total_review_count,
+      SUM(fans_count) as fans_count,
+      MAX(total_fans_count) as total_fans_count,
+      SUM(download_count) as download_count,
+      MAX(total_download_count) as total_download_count,
+      SUM(pc_download_count) as pc_download_count,
+      SUM(app_download_count) as app_download_count,
+      SUM(none_ai_download_count) as none_ai_download_count,
+      SUM(ai_download_count) as ai_download_count,
+      SUM(ai_none_maker_download_count) as ai_none_maker_download_count,
+      SUM(ai_maker_download_count) as ai_maker_download_count
+    FROM dws_taptap_download_daily 
+    WHERE substr(crawled_at, 1, 7) = substr('{today}', 1, 7)
+    GROUP BY substr(crawled_at, 1, 7), app_id
+trigger_type: user
+outputs:
+  - target_table: "dws_taptap_download_monthly"
+    table_schema:
+      columns:
+        - name: app_id
+          type: INTEGER
+        - name: total_wish_count
+          type: INTEGER
+        - name: wish_count
+          type: INTEGER
+        - name: total_review_count
+          type: INTEGER
+        - name: review_count
+          type: INTEGER
+        - name: total_fans_count
+          type: INTEGER
+        - name: fans_count
+          type: INTEGER
+        - name: total_download_count
+          type: INTEGER
+        - name: download_count
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: app_download_count
+          type: INTEGER
+        - name: none_ai_download_count
+          type: INTEGER
+        - name: ai_download_count
+          type: INTEGER
+        - name: ai_none_maker_download_count
+          type: INTEGER
+        - name: ai_maker_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_download_monthly_crawled_at_app_id
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true   
+        - name: total_wish_count
+          source: total_wish_count
+          to_number: true
+        - name: wish_count
+          source: wish_count
+          to_number: true
+        - name: total_review_count
+          source: total_review_count
+          to_number: true
+        - name: review_count
+          source: review_count
+          to_number: true
+        - name: total_fans_count
+          source: total_fans_count
+          to_number: true
+        - name: fans_count
+          source: fans_count
+          to_number: true
+        - name: total_download_count
+          source: total_download_count
+          to_number: true
+        - name: download_count
+          source: download_count
+          to_number: true  
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true
+        - name: app_download_count
+          source: app_download_count
+          to_number: true
+        - name: none_ai_download_count
+          source: none_ai_download_count
+          to_number: true
+        - name: ai_download_count
+          source: ai_download_count
+          to_number: true
+        - name: ai_none_maker_download_count
+          source: ai_none_maker_download_count
+          to_number: true   
+        - name: ai_maker_download_count
+          source: ai_maker_download_count
+          to_number: true 
+        - name: crawled_at
+          source: crawled_at
