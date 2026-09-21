@@ -5,6 +5,7 @@ https://horgrix.com/api/data/{table}/rows/batch 批量上传到远程服务器�
 - dws_taptap_download_hourly：仅上传当前小时数据
 - dws_taptap_download_daily：仅上传当天数据
 - dws_taptap_download_monthly：仅上传当月数据
+- dws_taptap_game：仅上传当月数据
 
 上传时排除本地自增 id 列，仅上传业务字段；rows 格式：[{列名: 值}, ...]。
 """
@@ -25,6 +26,7 @@ TABLES = [
     ("dws_taptap_download_hourly", "%Y-%m-%d %H"),
     ("dws_taptap_download_daily", "%Y-%m-%d"),
     ("dws_taptap_download_monthly", "%Y-%m"),
+    ("dws_taptap_game", "%Y-%m"),
 ]
 
 
