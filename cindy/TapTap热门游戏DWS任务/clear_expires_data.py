@@ -1,7 +1,7 @@
 """清理 TapTap 热门游戏 DWS 三张表的历史数据。
 
 清理规则：
-- dws_taptap_download_hourly：删除 crawled_at 早于最近 48 小时的数据（格式 YYYY-MM-DD HH）
+- dws_taptap_download_hourly：删除 crawled_at 早于最近 72 小时的数据（格式 YYYY-MM-DD HH）
 - dws_taptap_download_daily：删除 crawled_at 早于最近 30 天的数据（格式 YYYY-MM-DD）
 - dws_taptap_download_monthly：删除 crawled_at 早于最近 24 个月的数据（格式 YYYY-MM）
 
@@ -17,7 +17,7 @@ DB_PATH = PROJECT_ROOT / "crawler.db"
 
 # (表名, crawled_at 的 strftime 格式, 保留时长修饰符)
 RULES = [
-    ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-48 hours"),
+    ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-72 hours"),
     ("dws_taptap_download_daily", "%Y-%m-%d", "-30 days"),
     ("dws_taptap_download_monthly", "%Y-%m", "-24 months"),
 ]
