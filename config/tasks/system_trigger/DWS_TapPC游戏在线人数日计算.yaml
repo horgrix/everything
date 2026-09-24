@@ -28,7 +28,7 @@ db:
       substr(crawled_at, 1, 10) = '{days_ago:365}'
     GROUP BY crawled_at
 trigger_type: system
-schedule: "20 * * * *"
+schedule: "15 * * * *"
 outputs:
   - target_table: "dws_taptap_peak_players_hourly"
     table_schema:

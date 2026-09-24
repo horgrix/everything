@@ -1,4 +1,4 @@
-name: "DWS_TapPC游戏在线人数日计算"
+name: "DWS_TapPC游戏在线人数汇总"
 type: db
 db:
   type: sqlite
@@ -13,7 +13,7 @@ db:
       substr(crawled_at, 1, 10) = '{today}'
     GROUP BY crawled_at
 trigger_type: system
-schedule: "15 * * * *"
+schedule: "10 * * * *"
 outputs:
   - target_table: "dws_tmp_taptap_peak_players_hourly"
     table_schema:
