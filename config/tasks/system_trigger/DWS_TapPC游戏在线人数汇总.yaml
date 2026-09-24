@@ -1,0 +1,39 @@
+name: "DWS_TapPC游戏在线人数日计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      SUM(online_players) AS online_players
+    FROM 
+      taptap_pc_online_players
+    WHERE 
+      substr(crawled_at, 1, 10) = '{today}'
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "15 * * * *"
+outputs:
+  - target_table: "dws_tmp_taptap_peak_players_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: online_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_tmp_taptap_peak_players_hourly_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: online_players
+          source: online_players
+          to_number: true   
+        - name: crawled_at
+          source: crawled_at

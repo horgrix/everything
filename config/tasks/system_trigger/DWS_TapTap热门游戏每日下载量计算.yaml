@@ -1,0 +1,121 @@
+name: "DWS_TapTap热门游戏每日下载量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      app_id,
+      substr(crawled_at, 1, 10) as crawled_at,
+      SUM(wish_count) as wish_count,
+      MAX(total_wish_count) as total_wish_count,
+      SUM(review_count) as review_count,
+      MAX(total_review_count) as total_review_count,
+      SUM(fans_count) as fans_count,
+      MAX(total_fans_count) as total_fans_count,
+      SUM(download_count) as download_count,
+      MAX(total_download_count) as total_download_count,
+      SUM(CASE WHEN refer == "pc" THEN download_count ELSE 0 END) as pc_download_count,
+      SUM(CASE WHEN refer == "app" THEN download_count ELSE 0 END) as app_download_count,
+      SUM(CASE WHEN distribution_type == 0 THEN download_count ELSE 0 END) as none_ai_download_count,
+      SUM(CASE WHEN distribution_type > 0 THEN download_count ELSE 0 END) as ai_download_count,
+      SUM(CASE WHEN distribution_type == 1 THEN download_count ELSE 0 END) as ai_none_maker_download_count,
+      SUM(CASE WHEN distribution_type == 2 THEN download_count ELSE 0 END) as ai_maker_download_count
+    FROM dws_taptap_download_hourly 
+    WHERE substr(crawled_at, 1, 10) = '{today}'
+    GROUP BY substr(crawled_at, 1, 10), app_id
+trigger_type: system
+schedule: "12 * * * *"
+outputs:
+  - target_table: "dws_taptap_download_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: total_wish_count
+          type: INTEGER
+        - name: wish_count
+          type: INTEGER
+        - name: total_review_count
+          type: INTEGER
+        - name: review_count
+          type: INTEGER
+        - name: total_fans_count
+          type: INTEGER
+        - name: fans_count
+          type: INTEGER
+        - name: total_download_count
+          type: INTEGER
+        - name: download_count
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: app_download_count
+          type: INTEGER
+        - name: none_ai_download_count
+          type: INTEGER
+        - name: ai_download_count
+          type: INTEGER
+        - name: ai_none_maker_download_count
+          type: INTEGER
+        - name: ai_maker_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_download_daily_crawled_at_app_id
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true
+        - name: total_wish_count
+          source: total_wish_count
+          to_number: true
+        - name: wish_count
+          source: wish_count
+          to_number: true
+        - name: total_review_count
+          source: total_review_count
+          to_number: true
+        - name: review_count
+          source: review_count
+          to_number: true
+        - name: total_fans_count
+          source: total_fans_count
+          to_number: true
+        - name: fans_count
+          source: fans_count
+          to_number: true
+        - name: total_download_count
+          source: total_download_count
+          to_number: true   
+        - name: download_count
+          source: download_count
+          to_number: true  
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true
+        - name: app_download_count
+          source: app_download_count
+          to_number: true
+        - name: none_ai_download_count
+          source: none_ai_download_count
+          to_number: true
+        - name: ai_download_count
+          source: ai_download_count
+          to_number: true
+        - name: ai_none_maker_download_count
+          source: ai_none_maker_download_count
+          to_number: true   
+        - name: ai_maker_download_count
+          source: ai_maker_download_count
+          to_number: true 
+        - name: crawled_at
+          source: crawled_at
