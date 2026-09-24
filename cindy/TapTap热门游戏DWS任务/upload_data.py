@@ -23,10 +23,12 @@ DB_PATH = PROJECT_ROOT / "crawler.db"
 URL_TEMPLATE = "https://horgrix.com/api/data/{table}/rows/batch"
 # (表名, crawled_at 的 strftime 格式) —— 仅上传当前小时/当天/当月数据
 TABLES = [
-    ("dws_taptap_download_hourly", "%Y-%m-%d %H"),
-    ("dws_taptap_download_daily", "%Y-%m-%d"),
-    ("dws_taptap_download_monthly", "%Y-%m"),
-    ("dws_taptap_game", "%Y-%m"),
+    # ("dws_taptap_download_hourly", "%Y-%m-%d %H"),
+    # ("dws_taptap_download_daily", "%Y-%m-%d"),
+    # ("dws_taptap_download_monthly", "%Y-%m"),
+    # ("dws_taptap_game", "%Y-%m"),
+    ('taptap_app_hot_list_hourly', "%Y-%m-%d %H"),
+    ('taptap_pc_hot_list_hourly', "%Y-%m-%d %H"),
 ]
 
 

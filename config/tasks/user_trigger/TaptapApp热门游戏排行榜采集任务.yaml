@@ -24,7 +24,6 @@ iterate:
     values: 
       - "android"
       - "ios"  
-request_interval: 1
 url: https://www.taptap.cn/webapiv2/app-top/v2/hits?from={from}&limit=10&platform={platform}&type_name=hot&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DAndroid%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
 - target_table: taptap_app_hot_list_hourly
