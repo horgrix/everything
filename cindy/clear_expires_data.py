@@ -11,12 +11,13 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# 脚本位于 cindy/TapTap热门游戏DWS任务/ 下，向上两级即项目根目录。
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# 脚本位于 cindy/ 下，向上一级即项目根目录。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = PROJECT_ROOT / "crawler.db"
 
 # (表名, crawled_at 的 strftime 格式, 保留时长修饰符)
 RULES = [
+    ("taptap_pc_online_players", "%Y-%m-%d %H", "-72 hours"),
     ("taptap_app_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
     ("taptap_pc_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
     ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-72 hours"),
