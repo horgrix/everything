@@ -1,0 +1,79 @@
+name: "DWS_TapPC游戏在线人数日计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{today}' THEN online_players ELSE 0 END) AS today_total_online_players,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{yesterday}' THEN online_players ELSE 0 END) AS yesterday_total_online_players,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{days_ago:7}' THEN online_players ELSE 0 END) AS ago_7_total_online_players,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{days_ago:30}' THEN online_players ELSE 0 END) AS ago_30_total_online_players,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{days_ago:90}' THEN online_players ELSE 0 END) AS ago_90_total_online_players,
+      SUM(CASE WHEN substr(crawled_at, 1, 10) = '{days_ago:365}' THEN online_players ELSE 0 END) AS ago_365_total_online_players
+    FROM 
+      taptap_pc_online_players
+    WHERE 
+      substr(crawled_at, 1, 10) = '{today}'
+    OR 
+      substr(crawled_at, 1, 10) = '{yesterday}'
+    OR 
+      substr(crawled_at, 1, 10) = '{days_ago:7}'
+    OR 
+      substr(crawled_at, 1, 10) = '{days_ago:30}'
+    OR 
+      substr(crawled_at, 1, 10) = '{days_ago:90}'
+    OR 
+      substr(crawled_at, 1, 10) = '{days_ago:365}'
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "15 * * * *"
+outputs:
+  - target_table: "dws_taptap_peak_players_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: today_total_online_players
+          type: INTEGER
+        - name: yesterday_total_online_players
+          type: INTEGER
+        - name: ago_7_total_online_players
+          type: INTEGER
+        - name: ago_30_total_online_players
+          type: INTEGER
+        - name: ago_90_total_online_players
+          type: INTEGER
+        - name: ago_365_total_online_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_pc_peak_online_players_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: today_total_online_players
+          source: today_total_online_players
+          to_number: true   
+        - name: yesterday_total_online_players
+          source: yesterday_total_online_players
+          to_number: true     
+        - name: ago_7_total_online_players
+          source: ago_7_total_online_players
+          to_number: true
+        - name: ago_30_total_online_players
+          source: ago_30_total_online_players
+          to_number: true
+        - name: ago_90_total_online_players
+          source: ago_90_total_online_players
+          to_number: true
+        - name: ago_365_total_online_players
+          source: ago_365_total_online_players
+          to_number: true
+        - name: crawled_at
+          source: crawled_at
