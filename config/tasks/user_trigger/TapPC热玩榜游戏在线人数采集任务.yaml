@@ -1,0 +1,208 @@
+name: TapPC热玩榜游戏在线人数采集任务
+type: api
+method: GET
+trigger_type: user
+iterate:
+- var_name: app_id
+  values:
+  - 6974
+  - 7054
+  - 10056
+  - 45213
+  - 58881
+  - 58885
+  - 70253
+  - 78938
+  - 82921
+  - 84463
+  - 130630
+  - 130651
+  - 139301
+  - 145396
+  - 146791
+  - 151502
+  - 168332
+  - 172664
+  - 175450
+  - 176228
+  - 176733
+  - 177804
+  - 188212
+  - 188743
+  - 190930
+  - 191385
+  - 192675
+  - 202416
+  - 202514
+  - 203729
+  - 207018
+  - 209273
+  - 209866
+  - 213181
+  - 214603
+  - 218210
+  - 219503
+  - 220861
+  - 221380
+  - 221583
+  - 222089
+  - 223632
+  - 224267
+  - 225869
+  - 226568
+  - 229966
+  - 231537
+  - 232326
+  - 233514
+  - 233558
+  - 234280
+  - 234493
+  - 236627
+  - 238517
+  - 239372
+  - 241042
+  - 242904
+  - 243110
+  - 247283
+  - 273365
+  - 281223
+  - 305435
+  - 330259
+  - 337150
+  - 337799
+  - 352408
+  - 382756
+  - 383413
+  - 387264
+  - 387279
+  - 388717
+  - 498636
+  - 524022
+  - 550307
+  - 613799
+  - 617522
+  - 622867
+  - 708799
+  - 708927
+  - 711932
+  - 712207
+  - 714119
+  - 714123
+  - 719426
+  - 719781
+  - 720041
+  - 723266
+  - 732013
+  - 733498
+  - 733908
+  - 736959
+  - 737341
+  - 737825
+  - 741784
+  - 741793
+  - 744415
+  - 746164
+  - 746607
+  - 747914
+  - 748031
+  - 749379
+  - 751154
+  - 751902
+  - 751919
+  - 752178
+  - 752366
+  - 752573
+  - 752978
+  - 755439
+  - 755604
+  - 759688
+  - 760944
+  - 766061
+  - 766868
+  - 769562
+  - 774226
+  - 775179
+  - 779484
+  - 780867
+  - 781477
+  - 781997
+  - 782990
+  - 784833
+  - 785985
+  - 787972
+  - 788512
+  - 790483
+  - 797680
+  - 810595
+  - 811705
+  - 817986
+  - 820664
+  - 833485
+  - 840947
+  - 841663
+  - 850354
+  - 866326
+  - 867672
+  - 868526
+  - 874693
+  - 887316
+  - 888497
+  - 890577
+  - 895855
+  - 899071
+  - 902928
+  - 917580
+  - 924695
+  - 932371
+  - 933318
+  - 933677
+request_interval: 1
+url: https://api.taptapdada.com/group/v1/online-players-count?X-UA=V%3D1%26PN%3DTapPC%26VN%3D2026.9.22-rel.2%26VN_CODE%3D2026092202%26CH%3Drep-rep_xjkzxfe8mjr--260404zncardT541F2%26OS%3Dwindows%26OSV%3D10.0.26200%26LANG%3Dzh_CN%26UID%3De9b0bab39d9f4473ac1fd64288376937%26SR%3D3840x2160%26DEB%3DLENOVO%26DEM%3D90XF0014CP%26NT%3D7%26VID%3D689667667&app_id={app_id}
+headers:
+  user-agent: TapTap/2026.9.22-rel.2 (Build 2026092202/50f6c0c7) TapPC-Main/2026.9.22-rel.2
+  x-smfp: m02cac8d13cf3dee9bafb1d5ded33f6963
+  accept: application/json, text/plain, */*
+  accept-encoding: gzip
+  authorization:
+    script: "import base64\nimport hashlib\nimport hmac\nimport os\nimport time\n\
+      from urllib.parse import urlparse\n\nKID = \"whDzJuEy8c5RLtCHasHRIQniCZfaTlkFPoMHZ9Xx\"\
+      \nMAC_KEY = \"EsDzJuEyrun4B3IgerRaUDdJFR1twHIIn5niTAex\"\n\nparsed = urlparse(url)\n\
+      host = parsed.hostname or \"\"\nport = str(parsed.port or 443)\nuri = parsed.path\
+      \ + (\"?\" + parsed.query if parsed.query else \"\")\n\nts = str(int(time.time()))\n\
+      nonce = base64.b64encode(os.urandom(6)).decode()\nsign_str = f\"{ts}\\n{nonce}\\\
+      n{method}\\n{uri}\\n{host}\\n{port}\\n\\n\"\nmac = base64.b64encode(\n    hmac.new(MAC_KEY.encode(),\
+      \ sign_str.encode(), hashlib.sha1).digest()\n).decode()\nreturn f'MAC id=\"\
+      {KID}\",ts=\"{ts}\",nonce=\"{nonce}\",mac=\"{mac}\"'\n"
+outputs:
+- target_table: taptap_pc_online_players
+  table_schema:
+    columns:
+    - name: id
+      type: INTEGER
+      constraint: PRIMARY KEY AUTOINCREMENT
+    - name: app_id
+      type: INTEGER
+    - name: online_players
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+    indexes:
+    - name: idx_uk_taptap_pc_online_players_app_id_crawled_at
+      columns:
+      - crawled_at
+      - app_id
+      unique: true
+  parser:
+    type: json
+    root_path: data
+    fields:
+    - name: app_id
+      value: '{app_id}'
+      to_number: true
+    - name: online_players
+      path: total
+retry:
+  backoff_base: 2.0
+  max_attempts: 3
+anti_spider:
+  enabled: false

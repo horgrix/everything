@@ -1,0 +1,73 @@
+name: TapPC每日新发现广告采集任务
+type: api
+method: GET
+trigger_type: user    
+request_interval: 1
+url: https://api.taptapdada.com/pc-game/v2/list?X-UA=V%3D1%26PN%3DTapPC%26VN%3D2026.9.22-rel.2%26VN_CODE%3D2026092202%26CH%3Drep-rep_xjkzxfe8mjr--260404zncardT541F2%26OS%3Dwindows%26OSV%3D10.0.26200%26LANG%3Dzh_CN%26UID%3De9b0bab39d9f4473ac1fd64288376937%26SR%3D3840x2160%26DEB%3DLENOVO%26DEM%3D90XF0014CP%26NT%3D7%26VID%3D689667667&type=collection&value=2671
+headers:
+  user-agent: "TapTap/2026.9.22-rel.2 (Build 2026092202/50f6c0c7) TapPC-Main/2026.9.22-rel.2"
+  x-smfp: "m02cac8d13cf3dee9bafb1d5ded33f6963"
+  accept: "application/json, text/plain, */*"
+  accept-encoding: "gzip"
+  # authorization 由脚本动态生成（MAC 签名认证信息）
+  authorization:
+    script: |
+      import base64
+      import hashlib
+      import hmac
+      import os
+      import time
+      from urllib.parse import urlparse
+
+      KID = "whDzJuEy8c5RLtCHasHRIQniCZfaTlkFPoMHZ9Xx"
+      MAC_KEY = "EsDzJuEyrun4B3IgerRaUDdJFR1twHIIn5niTAex"
+
+      parsed = urlparse(url)
+      host = parsed.hostname or ""
+      port = str(parsed.port or 443)
+      uri = parsed.path + ("?" + parsed.query if parsed.query else "")
+
+      ts = str(int(time.time()))
+      nonce = base64.b64encode(os.urandom(6)).decode()
+      sign_str = f"{ts}\n{nonce}\n{method}\n{uri}\n{host}\n{port}\n\n"
+      mac = base64.b64encode(
+          hmac.new(MAC_KEY.encode(), sign_str.encode(), hashlib.sha1).digest()
+      ).decode()
+      return f'MAC id="{KID}",ts="{ts}",nonce="{nonce}",mac="{mac}"'
+outputs:
+- target_table: taptap_ad_loading_hourly
+  table_schema:
+    columns:
+    - name: ad_type
+      type: TEXT
+    - name: app_id
+      type: INTEGER
+    - name: position
+      type: INTEGER
+    - name: is_ad
+      type: TEXT
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+    indexes:
+    - name: idx_uk_taptap_ad_loading_hourly_crawled_at_ad_type_position_app_id
+      columns: [crawled_at, ad_type, position]
+      unique: true
+  parser:
+    type: json
+    root_path: "data.list" 
+    fields:
+    - name: ad_type
+      value: "tappc_2671"
+    - name: app_id
+      path: app.id
+      to_number: true
+    - name: position
+      index: 1
+      to_number: true
+    - name: is_ad
+      path: is_ad
+retry:
+  backoff_base: 2.0
+  max_attempts: 3
+anti_spider:
+  enabled: false

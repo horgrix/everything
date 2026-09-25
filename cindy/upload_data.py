@@ -16,19 +16,17 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-# 脚本位于 cindy/TapTap热门游戏DWS任务/ 下，向上两级即项目根目录。
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# 脚本位于 cindy/ 下，向上一级即项目根目录。
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = PROJECT_ROOT / "crawler.db"
 
 URL_TEMPLATE = "https://horgrix.com/api/data/{table}/rows/batch"
 # (表名, crawled_at 的 strftime 格式) —— 仅上传当前小时/当天/当月数据
 TABLES = [
-    # ("dws_taptap_download_hourly", "%Y-%m-%d %H"),
-    # ("dws_taptap_download_daily", "%Y-%m-%d"),
-    # ("dws_taptap_download_monthly", "%Y-%m"),
-    # ("dws_taptap_game", "%Y-%m"),
+    ("taptap_pc_online_players", "%Y-%m-%d %H"),
     ('taptap_app_hot_list_hourly', "%Y-%m-%d %H"),
     ('taptap_pc_hot_list_hourly', "%Y-%m-%d %H"),
+    ("taptap_ad_loading_hourly", "%Y-%m-%d %H"),
 ]
 
 

@@ -1,0 +1,71 @@
+name: TapPC热玩榜游戏ID采集任务
+type: api
+method: GET
+trigger_type: user
+iterate:
+  - var_name: "from"
+    values:
+      - 0       
+      - 20 
+      - 40
+      - 60
+      - 80
+      - 100
+      - 120
+      - 140
+request_interval: 1
+url: https://api.taptapdada.com/pc-game/v2/list?X-UA=V%3D1%26PN%3DTapPC%26VN%3D2026.9.22-rel.2%26VN_CODE%3D2026092202%26CH%3Drep-rep_xjkzxfe8mjr--260404zncardT541F2%26OS%3Dwindows%26OSV%3D10.0.26200%26LANG%3Dzh_CN%26UID%3De9b0bab39d9f4473ac1fd64288376937%26SR%3D3840x2160%26DEB%3DLENOVO%26DEM%3D90XF0014CP%26NT%3D7%26VID%3D689667667&from={from}&limit=20&type=rank&value=pc_played
+headers:
+  user-agent: "TapTap/2026.9.22-rel.2 (Build 2026092202/50f6c0c7) TapPC-Main/2026.9.22-rel.2"
+  x-smfp: "m02cac8d13cf3dee9bafb1d5ded33f6963"
+  accept: "application/json, text/plain, */*"
+  accept-encoding: "gzip"
+  # authorization 由脚本动态生成（MAC 签名认证信息）
+  authorization:
+    script: |
+      import base64
+      import hashlib
+      import hmac
+      import os
+      import time
+      from urllib.parse import urlparse
+
+      KID = "whDzJuEy8c5RLtCHasHRIQniCZfaTlkFPoMHZ9Xx"
+      MAC_KEY = "EsDzJuEyrun4B3IgerRaUDdJFR1twHIIn5niTAex"
+
+      parsed = urlparse(url)
+      host = parsed.hostname or ""
+      port = str(parsed.port or 443)
+      uri = parsed.path + ("?" + parsed.query if parsed.query else "")
+
+      ts = str(int(time.time()))
+      nonce = base64.b64encode(os.urandom(6)).decode()
+      sign_str = f"{ts}\n{nonce}\n{method}\n{uri}\n{host}\n{port}\n\n"
+      mac = base64.b64encode(
+          hmac.new(MAC_KEY.encode(), sign_str.encode(), hashlib.sha1).digest()
+      ).decode()
+      return f'MAC id="{KID}",ts="{ts}",nonce="{nonce}",mac="{mac}"'
+outputs:
+- target_table: taptap_pc_played_ids_daily
+  table_schema:
+    columns:
+    - name: app_id
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+    indexes:
+    - name: idx_uk_taptap_pc_played_ids_daily_crawled_at_app_id
+      columns: [crawled_at, app_id]
+      unique: true
+  parser:
+    type: json
+    root_path: "data.list" 
+    fields:
+    - name: app_id
+      path: app.id
+      to_number: true
+retry:
+  backoff_base: 2.0
+  max_attempts: 3
+anti_spider:
+  enabled: false

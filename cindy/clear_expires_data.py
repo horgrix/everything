@@ -21,6 +21,7 @@ RULES = [
     ("taptap_app_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
     ("taptap_pc_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
     ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-72 hours"),
+    ("taptap_ad_loading_hourly", "%Y-%m-%d %H", "-360 hours"),
     ("dws_taptap_download_daily", "%Y-%m-%d", "-30 days"),
     ("dws_taptap_download_monthly", "%Y-%m", "-24 months"),
 ]
