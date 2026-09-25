@@ -41,7 +41,7 @@ db:
     ON
       substr(datetime(today.crawled_at || ':00', '-365 day'), 1, 13) = {days_ago:365}
 trigger_type: system
-schedule: "15 * * * *"
+schedule: "12 * * * *"
 outputs:
   - target_table: "dws_taptap_peak_players_hourly"
     table_schema:
