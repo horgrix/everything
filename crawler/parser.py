@@ -157,11 +157,14 @@ class Parser:
 
         # 2. Field extraction — strategy chain
         results = []
-        for row in raw_rows:
+        for index, row in enumerate(raw_rows):
+            # 注入遍历索引，供字段的 index 属性或 value: "{index}" 引用
+            row_context = dict(context)
+            row_context["index"] = index
             mapped = {}
             for field in fields:
                 mapped[field["name"]] = self._extract_field_value(
-                    row, field, parser_config, context
+                    row, field, parser_config, row_context
                 )
             results.append(mapped)
 
@@ -311,6 +314,27 @@ class Parser:
         return val
 
     @staticmethod
+    def _cond_has_index(field: dict, _parser_config: dict) -> bool:
+        return field.get("index") is not None
+
+    @staticmethod
+    def _extract_index(_row, field: dict, _pc: dict, context: dict) -> int:
+        """返回当前遍历索引（0-based）+ index 属性的偏移。
+
+        - index: true  → 等价于 index: 0（0, 1, 2, …）
+        - index: 0     → 0-based 列表位置
+        - index: 1     → 1-based 榜单排名（1, 2, 3, …）
+        """
+        base = field.get("index")
+        if base is True:
+            base = 0
+        index = context.get("index", 0)
+        try:
+            return int(index) + int(base)
+        except (TypeError, ValueError):
+            return int(index)
+
+    @staticmethod
     def _cond_position_index(field: dict, parser_config: dict) -> bool:
         return bool(
             parser_config.get("array_index_mapping")
@@ -429,6 +453,7 @@ class Parser:
 
         # Field strategies — ordered from highest to lowest priority
         self.register_field_extractor(self._cond_has_value, self._extract_value)
+        self.register_field_extractor(self._cond_has_index, self._extract_index)
         self.register_field_extractor(self._cond_position_index, self._extract_position)
         self.register_field_extractor(self._cond_is_html, self._extract_html_field)
         self.register_field_extractor(self._cond_is_dict, self._extract_dict_field)

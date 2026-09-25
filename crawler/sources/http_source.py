@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import aiohttp
 
+from ..template import URLTemplate
 from .base import DataSource
 
 if TYPE_CHECKING:
@@ -35,6 +36,42 @@ _DEFAULT_HEADERS = {
     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
     "Accept-Encoding": "gzip, deflate",
 }
+
+
+def _merge_headers(base: dict, override: dict) -> dict:
+    """按 header 名（大小写不敏感）合并，override 覆盖 base。"""
+    merged = dict(base)
+    for key, value in override.items():
+        for existing in list(merged.keys()):
+            if existing.lower() == str(key).lower():
+                del merged[existing]
+                break
+        merged[key] = value
+    return merged
+
+
+def _run_header_script(script: str, variables: dict) -> str:
+    """执行 header 生成脚本，脚本通过 return 返回字符串。"""
+    indented = "\n".join(
+        ("    " + line if line.strip() else "") for line in script.splitlines()
+    )
+    func_source = "def _generate():\n" + indented + "\n"
+    namespace = dict(variables)
+    exec(compile(func_source, "<header_script>", "exec"), namespace)
+    result = namespace["_generate"]()
+    return "" if result is None else str(result)
+
+
+def _resolve_header_value(value, variables: dict) -> str:
+    """解析单个 header 值：静态字符串（支持 {var}）或 {script: ...} 动态脚本。"""
+    if isinstance(value, dict):
+        script = value.get("script")
+        if script:
+            return _run_header_script(script, variables)
+        return str(value)
+    if isinstance(value, str):
+        return URLTemplate.resolve(value, context=variables.get("context", {}))
+    return str(value)
 
 
 class HttpSource(DataSource):
@@ -89,7 +126,7 @@ class HttpSource(DataSource):
         max_retries = retry_config.get("max_attempts", self._max_retries)
         backoff_base = retry_config.get("backoff_base", self._backoff_base)
 
-        headers = self._build_headers(task_config)
+        headers = self._build_headers(task_config, context, method, url)
 
         last_error = None
         for attempt in range(1, max_retries + 1):
@@ -144,15 +181,44 @@ class HttpSource(DataSource):
         logger.debug("Anti-spider delay: %.2fs", seconds)
         await asyncio.sleep(seconds)
 
-    def _build_headers(self, task_config: dict) -> dict:
-        """Build request headers, optionally rotating User-Agent."""
-        anti = task_config.get("anti_spider", {})
+    def _build_headers(
+        self,
+        task_config: dict,
+        context: dict = None,
+        method: str = "GET",
+        url: str = "",
+    ) -> dict:
+        """Build request headers.
+
+        合并默认 headers、anti_spider 的 User-Agent 轮换、以及任务级 `headers`
+        配置。任务级 header 值支持两种写法：
+          - 静态字符串：支持 {var} 模板变量
+          - dict + script：执行 Python 脚本动态生成（如认证签名），
+            脚本内可用 url / method / context / task_config，最后 return 字符串。
+        """
+        context = context or {}
+
         headers = dict(_DEFAULT_HEADERS)
 
+        anti = task_config.get("anti_spider", {})
         if anti.get("enabled") and anti.get("rotate_user_agent"):
             import random
             agents = anti.get("user_agents", _DEFAULT_USER_AGENTS)
             headers["User-Agent"] = random.choice(agents)
+
+        custom = task_config.get("headers", {})
+        if custom:
+            variables = {
+                "url": url,
+                "method": method,
+                "context": context,
+                "task_config": task_config,
+            }
+            resolved = {
+                key: _resolve_header_value(value, variables)
+                for key, value in custom.items()
+            }
+            headers = _merge_headers(headers, resolved)
 
         return headers
 

@@ -22,6 +22,7 @@
   - [trigger_type / schedule](#trigger_type--schedule)
   - [encoding](#encoding)
   - [params](#params)
+  - [headers — 请求头](#headers--请求头)
 - [四、outputs — 输出目标](#四outputs--输出目标)
   - [单表输出](#单表输出)
   - [多表输出（从一次请求拆出多张表）](#多表输出从一次请求拆出多张表)
@@ -332,6 +333,49 @@ params:
 url: "https://api.example.com/data?key={api_key}&source={source}"
 ```
 
+### headers — 请求头
+
+| 类型 | 必填 | 说明 |
+|------|------|------|
+| `dict` | 否 | 自定义请求头，覆盖默认 headers（大小写不敏感） |
+
+为请求添加自定义 Header。每个 header 的值支持两种写法：
+
+1. **静态字符串**：直接写值，支持 `{var}` 模板变量。
+2. **动态脚本**：值为 `{script: "..."}`，执行一段 Python 脚本生成该 header 的值。
+   脚本内可用 `url` / `method` / `context` / `task_config` 变量，最后用 `return`
+   返回字符串。常用于需要实时计算的认证信息（如 HMAC / MAC 签名）。
+
+```yaml
+headers:
+  user-agent: "TapTap/2026.9.22-rel.2 ..."
+  x-smfp: "m02cac8d13cf3dee9bafb1d5ded33f6963"
+  # 动态生成认证信息（MAC 签名）
+  authorization:
+    script: |
+      import base64, hashlib, hmac, os, time
+      from urllib.parse import urlparse
+
+      KID = "your-kid"
+      MAC_KEY = "your-mac-key"
+
+      parsed = urlparse(url)
+      host = parsed.hostname or ""
+      port = str(parsed.port or 443)
+      uri = parsed.path + ("?" + parsed.query if parsed.query else "")
+
+      ts = str(int(time.time()))
+      nonce = base64.b64encode(os.urandom(6)).decode()
+      sign_str = f"{ts}\n{nonce}\n{method}\n{uri}\n{host}\n{port}\n\n"
+      mac = base64.b64encode(
+          hmac.new(MAC_KEY.encode(), sign_str.encode(), hashlib.sha1).digest()
+      ).decode()
+      return f'MAC id="{KID}",ts="{ts}",nonce="{nonce}",mac="{mac}"'
+```
+
+> 脚本通过 `return` 返回 header 值；若返回 `None` 则按空字符串处理。
+> 脚本以 `exec` 方式执行，仅适用于你自己编写的可信配置。
+
 ---
 
 ## 四、outputs — 输出目标
@@ -541,6 +585,33 @@ parser:
       path: "cu_weakside"
       to_number: true
 ```
+
+#### 遍历索引（index）
+
+遍历数组时，可拿到当前元素在数组中的位置，用字段的 `index` 属性引用，
+满足榜单排名、广告位置等需求：
+
+- `index: true` → 等价于 `index: 0`（0, 1, 2, …）
+- `index: 0`    → 0-based 列表下标
+- `index: 1`    → 1-based 榜单排名（1, 2, 3, …）
+
+```yaml
+parser:
+  type: json
+  root_path: "data.list"
+  fields:
+    - name: position      # 0-based 位置
+      index: 0
+      to_number: true
+    - name: rank          # 1-based 榜单排名
+      index: 1
+      to_number: true
+    - name: app_id
+      path: "app.id"
+      to_number: true
+```
+
+> 遍历索引也会注入字段上下文，可用 `value: "{index}"` 引用（0-based）。
 
 ### JSON 二维数组（array_index_mapping）
 

@@ -83,6 +83,8 @@ class FieldConfig(_ConfigBase):
     @property
     def position(self) -> int | None: return self._raw.get("position")
     @property
+    def index(self) -> int | bool | None: return self._raw.get("index")
+    @property
     def selector(self) -> str | None: return self._raw.get("selector")
     @property
     def attr(self) -> str | None: return self._raw.get("attr")
@@ -261,6 +263,9 @@ class TaskConfig(_ConfigBase):
 
     @property
     def anti_spider(self) -> dict: return self._raw.get("anti_spider", {})
+
+    @property
+    def headers(self) -> dict: return self._raw.get("headers", {})
 
     @property
     def retry(self) -> dict: return self._raw.get("retry", {})
