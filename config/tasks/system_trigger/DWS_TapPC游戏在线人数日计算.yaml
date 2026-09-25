@@ -21,25 +21,55 @@ db:
       WHERE
         substr(crawled_at, 1, 10) = '{today}') today
     LEFT JOIN
-      dws_tmp_taptap_peak_players_hourly as yesterday
+      (SELECT 
+        crawled_at,
+        online_players
+      FROM
+        dws_tmp_taptap_peak_players_hourly
+      WHERE
+        substr(crawled_at, 1, 10) = '{yesterday}') yesterday
     ON
-      substr(datetime(today.crawled_at || ':00', '-1 day'), 1, 13) = {yesterday}
+      substr(datetime(today.crawled_at || ':00', '-1 day'), 1, 13) = yesterday.crawled_at
     LEFT JOIN
-      dws_tmp_taptap_peak_players_hourly as ago_7
+      (SELECT 
+        crawled_at,
+        online_players
+      FROM
+        dws_tmp_taptap_peak_players_hourly
+      WHERE
+        substr(crawled_at, 1, 10) = '{days_ago:7}') as ago_7
     ON
-      substr(datetime(today.crawled_at || ':00', '-7 day'), 1, 13) = {days_ago:7}
+      substr(datetime(today.crawled_at || ':00', '-7 day'), 1, 13) = ago_7.crawled_at
     LEFT JOIN
-      dws_tmp_taptap_peak_players_hourly as ago_30
+      (SELECT 
+        crawled_at,
+        online_players
+      FROM
+        dws_tmp_taptap_peak_players_hourly
+      WHERE
+        substr(crawled_at, 1, 10) = '{days_ago:30}') as ago_30
     ON
-      substr(datetime(today.crawled_at || ':00', '-30 day'), 1, 13) = {days_ago:30}
+      substr(datetime(today.crawled_at || ':00', '-30 day'), 1, 13) = ago_30.crawled_at
     LEFT JOIN
-      dws_tmp_taptap_peak_players_hourly as ago_90
+      (SELECT 
+        crawled_at,
+        online_players
+      FROM
+        dws_tmp_taptap_peak_players_hourly
+      WHERE
+        substr(crawled_at, 1, 10) = '{days_ago:90}') as ago_90
     ON
-      substr(datetime(today.crawled_at || ':00', '-90 day'), 1, 13) = {days_ago:90}
+      substr(datetime(today.crawled_at || ':00', '-90 day'), 1, 13) = ago_90.crawled_at
     LEFT JOIN
-      dws_tmp_taptap_peak_players_hourly as ago_365
+      (SELECT 
+        crawled_at,
+        online_players
+      FROM
+        dws_tmp_taptap_peak_players_hourly
+      WHERE
+        substr(crawled_at, 1, 10) = '{days_ago:365}') as ago_365
     ON
-      substr(datetime(today.crawled_at || ':00', '-365 day'), 1, 13) = {days_ago:365}
+      substr(datetime(today.crawled_at || ':00', '-365 day'), 1, 13) = ago_365.crawled_at
 trigger_type: system
 schedule: "12 * * * *"
 outputs:
