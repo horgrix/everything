@@ -1,4 +1,4 @@
-name: "DWS_TapPC热卖游戏每日汇总"
+name: "DWS_TapPC热卖游戏每月汇总"
 type: db
 db:
   type: sqlite
