@@ -1,0 +1,57 @@
+name: "DWS_TapPC热卖游戏每日汇总"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      app_id,
+      substr(crawled_at, 1, 10) as crawled_at,
+      SUM(bought_count) AS bought_count,
+      SUM(hits_total) AS hits_total,
+      SUM(pc_download_count) AS pc_download_count
+    FROM 
+      dws_taptap_sell_hourly
+    WHERE 
+      substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+    GROUP BY substr(crawled_at, 1, 10), app_id
+trigger_type: system
+schedule: "27 * * * *"
+outputs:
+  - target_table: "dws_taptap_sell_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: bought_count
+          type: INTEGER
+        - name: hits_total
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_sell_daily_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true
+        - name: bought_count
+          source: bought_count
+          to_number: true
+        - name: hits_total
+          source: hits_total
+          to_number: true 
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true  
+        - name: crawled_at
+          source: crawled_at

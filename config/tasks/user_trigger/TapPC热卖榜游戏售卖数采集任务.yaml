@@ -1,0 +1,58 @@
+name: TapPC热卖榜游戏售卖数采集任务
+type: api
+method: GET
+trigger_type: user
+iterate:
+- var_name: app_id
+  values:
+  - 65322
+  - 138653
+  - 140647
+  - 141289
+  - 155978
+request_interval: 1
+url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
+outputs:
+- target_table: taptap_pc_sell_list_hourly
+  table_schema:
+    columns:
+    - constraint: PRIMARY KEY AUTOINCREMENT
+      name: id
+      type: INTEGER
+    - name: app_id
+      type: INTEGER
+    - name: bought_count
+      type: INTEGER
+    - name: hits_total
+      type: INTEGER
+    - name: pc_download_count
+      type: INTEGER
+    - name: crawled_at
+      type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+    indexes:
+    - name: idx_uk_taptap_pc_sell_list_hourly_crawled_at_app_id
+      columns:
+      - crawled_at
+      - app_id
+      unique: true
+  parser:
+    type: json
+    root_path: data.list
+    fields:
+    - name: app_id
+      path: moment.app.id
+      to_number: true
+    - name: bought_count
+      path: moment.app.stat.bought_count
+      to_number: true
+    - name: hits_total
+      path: moment.app.stat.hits_total
+      to_number: true
+    - name: pc_download_count
+      path: moment.app.stat.pc_download_count
+      to_number: true
+retry:
+  backoff_base: 2.0
+  max_attempts: 3
+anti_spider:
+  enabled: false

@@ -17,12 +17,17 @@ DB_PATH = PROJECT_ROOT / "crawler.db"
 
 # (表名, crawled_at 的 strftime 格式, 保留时长修饰符)
 RULES = [
-    ("taptap_pc_online_players", "%Y-%m-%d %H", "-72 hours"),
-    ("taptap_app_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
-    ("taptap_pc_hot_list_hourly", "%Y-%m-%d %H", "-72 hours"),
-    ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-72 hours"),
+    ("taptap_app_sell_list_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("taptap_pc_sell_list_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("taptap_pc_online_players", "%Y-%m-%d %H", "-36 hours"),
+    ("taptap_app_hot_list_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("taptap_pc_hot_list_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("taptap_ad_loading_hourly", "%Y-%m-%d %H", "-360 hours"),
-    ("dws_taptap_download_daily", "%Y-%m-%d", "-30 days"),
+    ("dws_taptap_sell_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("dws_taptap_sell_daily", "%Y-%m-%d", "-36 days"),
+    ("dws_taptap_sell_monthly", "%Y-%m", "-24 months"),
+    ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("dws_taptap_download_daily", "%Y-%m-%d", "-36 days"),
     ("dws_taptap_download_monthly", "%Y-%m", "-24 months"),
 ]
 

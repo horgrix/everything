@@ -15,7 +15,6 @@ iterate:
   - 78938
   - 82921
   - 84463
-  - 130630
   - 130651
   - 139301
   - 145396
@@ -38,7 +37,6 @@ iterate:
   - 202514
   - 203729
   - 207018
-  - 209273
   - 209866
   - 213181
   - 214603
@@ -65,11 +63,9 @@ iterate:
   - 243110
   - 247283
   - 273365
-  - 273409
   - 281223
   - 305435
   - 330259
-  - 337150
   - 337799
   - 352408
   - 382756
@@ -110,8 +106,8 @@ iterate:
   - 751919
   - 752141
   - 752178
+  - 752180
   - 752573
-  - 752682
   - 752978
   - 753375
   - 755439
@@ -125,7 +121,6 @@ iterate:
   - 820664
   - 840947
   - 867191
-  - 887316
 request_interval: 1
 url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:

@@ -119,7 +119,6 @@ iterate:
   - 760944
   - 766061
   - 766868
-  - 769562
   - 774226
   - 775179
   - 779484
@@ -165,8 +164,8 @@ headers:
   accept-encoding: gzip
   authorization:
     script: "import base64\nimport hashlib\nimport hmac\nimport os\nimport time\n\
-      from urllib.parse import urlparse\n\nKID = \"whDzJuEy8c5RLtCHasHRIQniCZfaTlkFPoMHZ9Xx\"\
-      \nMAC_KEY = \"EsDzJuEyrun4B3IgerRaUDdJFR1twHIIn5niTAex\"\n\nparsed = urlparse(url)\n\
+      from urllib.parse import urlparse\n\nKID = \"TXZ1p8Ey9mkGK6dXyW2qBfpECnH7fn8e7jkt8Aqz\"\
+      \nMAC_KEY = \"e8Z1p8EyRytbKknK1JGV5nGm0MDhMI11rL2KV8tC\"\n\nparsed = urlparse(url)\n\
       host = parsed.hostname or \"\"\nport = str(parsed.port or 443)\nuri = parsed.path\
       \ + (\"?\" + parsed.query if parsed.query else \"\")\n\nts = str(int(time.time()))\n\
       nonce = base64.b64encode(os.urandom(6)).decode()\nsign_str = f\"{ts}\\n{nonce}\\\

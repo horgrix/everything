@@ -30,8 +30,8 @@ headers:
       import time
       from urllib.parse import urlparse
 
-      KID = "whDzJuEy8c5RLtCHasHRIQniCZfaTlkFPoMHZ9Xx"
-      MAC_KEY = "EsDzJuEyrun4B3IgerRaUDdJFR1twHIIn5niTAex"
+      KID = "TXZ1p8Ey9mkGK6dXyW2qBfpECnH7fn8e7jkt8Aqz"
+      MAC_KEY = "e8Z1p8EyRytbKknK1JGV5nGm0MDhMI11rL2KV8tC"
 
       parsed = urlparse(url)
       host = parsed.hostname or ""

@@ -1,0 +1,80 @@
+name: "DWS_TapPC热卖游戏增量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT * FROM
+    (SELECT 
+      app_id,
+      crawled_at,
+      "pc" as refer,
+      bought_count - LAG(bought_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS bought_count,
+      hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total,
+      pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count
+    FROM taptap_pc_sell_list_hourly 
+    WHERE app_id IS NOT NULL
+    AND crawled_at >= substr(datetime('now', 'localtime', '-2 hour'), 1, 13)
+    ORDER BY app_id, crawled_at) as t1
+    UNION ALL
+    SELECT * FROM
+    (SELECT 
+      app_id,
+      crawled_at,
+      "app" as refer,
+      bought_count - LAG(bought_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS bought_count,
+      hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS hits_total,
+      pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count
+    FROM taptap_app_sell_list_hourly
+    WHERE app_id IS NOT NULL
+    AND crawled_at >= substr(datetime('now', 'localtime', '-2 hour'), 1, 13)
+    ORDER BY app_id, crawled_at) as t2
+trigger_type: system
+schedule: "25 * * * *"
+outputs:
+  - target_table: "dws_taptap_sell_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: refer
+          type: TEXT
+        - name: bought_count
+          type: INTEGER
+        - name: hits_total
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: wdis
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_sell_hourly_crawled_at_refer_app_id
+          columns: [crawled_at, refer, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true      
+        - name: refer
+          source: refer
+        - name: bought_count
+          source: bought_count
+          to_number: true
+        - name: hits_total
+          source: hits_total
+          to_number: true
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true
+        - name: wdis
+          source: wdis
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

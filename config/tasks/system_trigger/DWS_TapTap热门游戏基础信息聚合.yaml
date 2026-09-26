@@ -36,7 +36,7 @@ db:
         GROUP BY app_id, substr(crawled_at, 1, 7)) as t2)
       GROUP BY app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3
 trigger_type: system
-schedule: "10 * * * *"
+schedule: "22 * * * *"
 outputs:
   - target_table: "dws_taptap_game"
     table_schema:

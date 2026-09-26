@@ -27,6 +27,8 @@ TABLES = [
     ('taptap_app_hot_list_hourly', "%Y-%m-%d %H"),
     ('taptap_pc_hot_list_hourly', "%Y-%m-%d %H"),
     ("taptap_ad_loading_hourly", "%Y-%m-%d %H"),
+    ("taptap_app_sell_list_hourly", "%Y-%m-%d %H"),
+    ("taptap_pc_sell_list_hourly", "%Y-%m-%d %H"),
 ]
 
 
