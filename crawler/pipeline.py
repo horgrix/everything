@@ -6,11 +6,15 @@ while the pipeline handles all data transformation.
 """
 
 from dataclasses import dataclass, field
+import json
 import logging
+import urllib.error
+import urllib.request
 from typing import Any
 
 from .parser import Parser
 from .cleaner import Cleaner
+from .template import URLTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +25,16 @@ class PipelineResult:
     inserted: int = 0
     updated: int = 0
     total: int = 0
+    api_sent: int = 0
+    api_failed: int = 0
 
     def __add__(self, other: "PipelineResult") -> "PipelineResult":
         return PipelineResult(
             inserted=self.inserted + other.inserted,
             updated=self.updated + other.updated,
             total=self.total + other.total,
+            api_sent=self.api_sent + other.api_sent,
+            api_failed=self.api_failed + other.api_failed,
         )
 
 
@@ -57,23 +65,25 @@ class DataPipeline:
         Process one output target against raw data.
 
         Steps:
-          1. Ensure target table exists
+          1. Ensure target table exists (only when target_table present)
           2. Extract page-level elements (element_selector)
           3. Parse raw data into rows
           4. Clean & filter rows
           5. Inject source_url
-          6. Batch UPSERT into database
+          6. Batch UPSERT into database (only when target_table present)
+          7. POST rows to remote API (only when target_api present)
 
         Returns:
-            PipelineResult with inserted/updated/total counts.
+            PipelineResult with inserted/updated/total/api_sent/api_failed counts.
         """
-        table = output_config["target_table"]
+        table = output_config.get("target_table", "")
+        target_api = output_config.get("target_api")
         parser_config = output_config.get("parser", {})
         parser_fields = parser_config.get("fields", [])
         table_schema = output_config.get("table_schema", {})
 
-        # 1. Ensure business table exists
-        if table_schema:
+        # 1. Ensure business table exists（仅 target_table）
+        if table and table_schema:
             db.ensure_business_table(
                 table,
                 table_schema.get("columns", []),
@@ -104,10 +114,63 @@ class DataPipeline:
                 if "source_url" not in row:
                     row["source_url"] = url
 
-        # 6. Batch upsert
-        result = db.insert_business_records_batch(table, cleaned)
-        return PipelineResult(
-            inserted=result["inserted"],
-            updated=result["updated"],
-            total=len(cleaned),
+        result = PipelineResult(total=len(cleaned))
+
+        # 6. Batch upsert（仅 target_table）
+        if table:
+            db_result = db.insert_business_records_batch(table, cleaned)
+            result.inserted = db_result["inserted"]
+            result.updated = db_result["updated"]
+
+        # 7. POST to remote API（仅 target_api）
+        if target_api:
+            if self._post_to_api(target_api, cleaned, context):
+                result.api_sent = len(cleaned)
+            else:
+                result.api_failed = len(cleaned)
+
+        return result
+
+    def _post_to_api(
+        self,
+        target_api_config: dict,
+        rows: list[dict],
+        context: dict,
+    ) -> bool:
+        """把清洗后的 rows 通过 HTTP POST 到远程 API（body 固定 {"rows": [...]}）。"""
+        url = target_api_config.get("url", "")
+        if not url:
+            logger.error("target_api 缺少 url，跳过上传")
+            return False
+
+        url = URLTemplate.resolve(url, context=context)
+        method = target_api_config.get("method", "POST")
+        headers = {"Content-Type": "application/json"}
+        headers.update(target_api_config.get("headers", {}))
+
+        payload = json.dumps({"rows": rows}, ensure_ascii=False).encode("utf-8")
+        req = urllib.request.Request(
+            url, data=payload, headers=headers, method=method
         )
+
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = resp.read().decode("utf-8")
+                status = resp.status
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", "replace")
+            logger.error("target_api 上传失败 HTTP %s: %s", e.code, body)
+            return False
+        except urllib.error.URLError as e:
+            logger.error("target_api 上传失败：%s", e.reason)
+            return False
+
+        logger.info(
+            "target_api 上传 %d 行到 %s，HTTP %s: %s",
+            len(rows), url, status, body,
+        )
+        try:
+            result = json.loads(body)
+        except json.JSONDecodeError:
+            result = {}
+        return result.get("code") == 0

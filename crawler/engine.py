@@ -98,6 +98,8 @@ class CrawlerEngine:
             "new": total.inserted,
             "updated": total.updated,
             "skipped": total.total - total.inserted - total.updated,
+            "api_sent": total.api_sent,
+            "api_failed": total.api_failed,
             "error": error_msg,
         }
 

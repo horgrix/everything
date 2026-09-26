@@ -186,7 +186,10 @@ class OutputConfig(_ConfigBase):
         return cls(_raw=d)
 
     @property
-    def target_table(self) -> str: return self._raw["target_table"]
+    def target_table(self) -> str | None: return self._raw.get("target_table")
+
+    @property
+    def target_api(self) -> dict | None: return self._raw.get("target_api")
 
     @property
     def table_schema(self) -> TableSchema:

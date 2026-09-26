@@ -91,6 +91,14 @@ class TaskLoader:
             logger.error("任务 '%s' 缺少 outputs 字段", name)
             return None
 
+        # 每个 output 至少要有 target_table 或 target_api 之一
+        for output_config in outputs_config:
+            if not output_config.get("target_table") and not output_config.get("target_api"):
+                logger.error(
+                    "任务 '%s' 的 output 缺少 target_table 或 target_api", name
+                )
+                return None
+
         # 取第一个 output 的 table 作为主表记录
         first_table = outputs_config[0].get("target_table", "unknown")
 

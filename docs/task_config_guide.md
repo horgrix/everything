@@ -431,6 +431,44 @@ outputs:
           path: "recommendations_up"
 ```
 
+### API 输出（target_api）
+
+除写入本地库 `target_table` 外，output 还支持 `target_api`，把清洗后的数据通过
+HTTP POST 到远程服务器。两者同层，可各自存在或同时存在：
+
+```yaml
+outputs:
+  # 仅推远程（不写本地库）
+  - target_api:
+      url: "https://horgrix.com/api/data/taptap_app_sell_list_hourly/rows/batch"
+    parser:
+      type: json
+      root_path: "data.list"
+      fields: [...]
+
+  # 本地库 + 远程同时输出（共用同一份清洗数据）
+  - target_table: taptap_app_sell_list_hourly
+    target_api:
+      url: "https://horgrix.com/api/data/taptap_app_sell_list_hourly/rows/batch"
+      headers:                     # 可选，静态请求头
+        Authorization: "Bearer xxx"
+    table_schema: {...}
+    parser: {...}
+```
+
+`target_api` 配置块字段：
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `url` | string | 是 | — | 远程接口地址，支持 `{var}` 模板变量 |
+| `method` | string | 否 | `POST` | HTTP 方法 |
+| `headers` | dict | 否 | `{"Content-Type": "application/json"}` | 附加请求头（静态） |
+
+请求体固定为 `{"rows": [{列: 值}, ...]}`，`rows` 即 parser 清洗后的结果（不含本地库
+自增 `id`）。字段默认值（如 `crawled_at`）需在 `fields` 里显式声明。
+
+> 上传失败仅记日志并计入统计（`api_failed`），不会中断任务。
+
 ---
 
 ## 五、table_schema — 表结构定义

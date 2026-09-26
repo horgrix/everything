@@ -17,6 +17,8 @@ from collections.abc import Callable
 
 from bs4 import BeautifulSoup
 
+from .template import URLTemplate
+
 logger = logging.getLogger(__name__)
 
 
@@ -309,8 +311,9 @@ class Parser:
     @staticmethod
     def _extract_value(_row, field: dict, _pc: dict, context: dict) -> str:
         val = field["value"]
-        if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
-            return context.get(val[1:-1], val)
+        if isinstance(val, str):
+            # 统一走模板解析，支持 {var}、{now:format}、{today} 等时间/上下文变量
+            return URLTemplate.resolve(val, context=context)
         return val
 
     @staticmethod
