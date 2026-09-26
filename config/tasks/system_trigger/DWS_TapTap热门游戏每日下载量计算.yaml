@@ -25,7 +25,7 @@ db:
     WHERE substr(crawled_at, 1, 10) = '{today}'
     GROUP BY substr(crawled_at, 1, 10), app_id
 trigger_type: system
-schedule: "26 * * * *"
+schedule: "26 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_daily"
     table_schema:

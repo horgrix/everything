@@ -16,7 +16,7 @@ db:
       substr(crawled_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
     GROUP BY substr(crawled_at, 1, 7), app_id
 trigger_type: system
-schedule: "29 * * * *"
+schedule: "29 */2 * * *"
 outputs:
   - target_table: "dws_taptap_sell_monthly"
     table_schema:
@@ -33,7 +33,7 @@ outputs:
         - name: pc_download_count
           type: INTEGER
         - name: crawled_at
-          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m', 'now', 'localtime'))
       indexes:
         - name: idx_uk_dws_taptap_sell_monthly_crawled_at_app_id
           columns: [crawled_at, app_id]

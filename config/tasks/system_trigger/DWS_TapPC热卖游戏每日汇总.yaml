@@ -16,7 +16,7 @@ db:
       substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
     GROUP BY substr(crawled_at, 1, 10), app_id
 trigger_type: system
-schedule: "27 * * * *"
+schedule: "27 */2 * * *"
 outputs:
   - target_table: "dws_taptap_sell_daily"
     table_schema:

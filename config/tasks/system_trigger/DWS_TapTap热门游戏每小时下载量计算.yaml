@@ -20,7 +20,7 @@ db:
       pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
     FROM taptap_pc_hot_list_hourly 
     WHERE app_id IS NOT NULL
-    AND crawled_at >= substr(datetime('now', 'localtime', '-2 hour'), 1, 13)
+    AND crawled_at >= substr(datetime('now', 'localtime', '-8 hour'), 1, 13)
     ORDER BY app_id, crawled_at) as t1
     UNION ALL
     SELECT * FROM
@@ -39,10 +39,10 @@ db:
       hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
     FROM taptap_app_hot_list_hourly
     WHERE app_id IS NOT NULL
-    AND crawled_at >= substr(datetime('now', 'localtime', '-2 hour'), 1, 13)
+    AND crawled_at >= substr(datetime('now', 'localtime', '-8 hour'), 1, 13)
     ORDER BY app_id, crawled_at) as t2
 trigger_type: system
-schedule: "24 * * * *"
+schedule: "24 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_hourly"
     table_schema:
