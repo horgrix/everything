@@ -78,6 +78,8 @@ outputs:
       - crawled_at
       - app_id
       unique: true
+  target_api:
+    url: https://horgrix.com/api/data/taptap_pc_sell_list_hourly/rows/batch
   parser:
     type: json
     root_path: data.list
@@ -94,6 +96,8 @@ outputs:
     - name: pc_download_count
       path: moment.app.stat.pc_download_count
       to_number: true
+    - name: crawled_at
+      value: '{now:%Y-%m-%d %H}'
 retry:
   backoff_base: 2.0
   max_attempts: 3

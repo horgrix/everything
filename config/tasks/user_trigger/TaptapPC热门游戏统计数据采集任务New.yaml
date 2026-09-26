@@ -23,7 +23,6 @@ iterate:
   - 161414
   - 168332
   - 172664
-  - 175450
   - 176228
   - 176733
   - 177804
@@ -48,7 +47,6 @@ iterate:
   - 222089
   - 223632
   - 224267
-  - 226568
   - 229966
   - 231537
   - 232326
@@ -73,13 +71,11 @@ iterate:
   - 383413
   - 387264
   - 388717
-  - 498636
   - 524022
   - 550307
   - 613799
   - 617522
   - 622867
-  - 708799
   - 708927
   - 711932
   - 712207
@@ -89,7 +85,6 @@ iterate:
   - 719781
   - 720041
   - 723266
-  - 730205
   - 732013
   - 732091
   - 733498
@@ -99,7 +94,6 @@ iterate:
   - 741793
   - 744415
   - 746164
-  - 746607
   - 747914
   - 748031
   - 749379
@@ -111,19 +105,16 @@ iterate:
   - 752180
   - 752573
   - 752978
-  - 753375
   - 755439
   - 755604
   - 759688
   - 760944
   - 766061
   - 768687
-  - 771648
   - 774226
   - 775179
   - 820664
   - 840947
-  - 867191
 request_interval: 1
 url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
@@ -169,6 +160,8 @@ outputs:
       columns:
       - crawled_at
       - distribution_type
+  target_api:
+    url: https://horgrix.com/api/data/taptap_pc_hot_list_hourly/rows/batch
   parser:
     type: json
     root_path: data.list
@@ -205,6 +198,8 @@ outputs:
     - name: wish_count
       path: moment.app.stat.wish_count
       to_number: true
+    - name: crawled_at
+      value: '{now:%Y-%m-%d %H}'
 retry:
   backoff_base: 2.0
   max_attempts: 3

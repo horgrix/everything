@@ -47,6 +47,8 @@ outputs:
     - name: idx_uk_taptap_app_sell_list_hourly_crawled_at_app_id
       columns: [crawled_at, app_id]
       unique: true
+  target_api:
+      url: "https://horgrix.com/api/data/taptap_app_sell_list_hourly/rows/batch"
   parser:
     type: json
     root_path: "data.list" 
@@ -63,6 +65,8 @@ outputs:
     - name: pc_download_count
       path: app.stat.pc_download_count
       to_number: true
+    - name: crawled_at
+      value: '{now:%Y-%m-%d %H}'
 retry:
   backoff_base: 2.0
   max_attempts: 3

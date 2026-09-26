@@ -147,7 +147,6 @@ iterate:
   - 874693
   - 887316
   - 888497
-  - 890577
   - 895855
   - 899071
   - 902928
@@ -192,6 +191,8 @@ outputs:
       - crawled_at
       - app_id
       unique: true
+  target_api:
+    url: https://horgrix.com/api/data/taptap_pc_online_players/rows/batch
   parser:
     type: json
     root_path: data
@@ -201,6 +202,8 @@ outputs:
       to_number: true
     - name: online_players
       path: total
+    - name: crawled_at
+      value: '{now:%Y-%m-%d %H}'
 retry:
   backoff_base: 2.0
   max_attempts: 3

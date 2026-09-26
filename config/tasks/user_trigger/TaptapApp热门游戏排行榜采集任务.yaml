@@ -64,6 +64,8 @@ outputs:
       unique: true
     - name: idx_query_taptap_app_hot_list_hourly_crawled_at_distribution_type
       columns: [crawled_at, distribution_type]
+  target_api:
+      url: "https://horgrix.com/api/data/taptap_app_hot_list_hourly/rows/batch"
   parser:
     type: json
     root_path: "data.list" 
@@ -100,6 +102,8 @@ outputs:
     - name: wish_count
       path: app.stat.wish_count
       to_number: true
+    - name: crawled_at
+      value: '{now:%Y-%m-%d %H}'
 retry:
   backoff_base: 2.0
   max_attempts: 3
