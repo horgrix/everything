@@ -14,7 +14,7 @@ db:
       pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count
     FROM taptap_pc_sell_list_hourly 
     WHERE app_id IS NOT NULL
-    AND crawled_at >= substr(datetime('now', 'localtime', '-8 hour'), 1, 13)
+    AND crawled_at >= substr(datetime('now', 'localtime', '-24 hour'), 1, 13)
     ORDER BY app_id, crawled_at) as t1
     UNION ALL
     SELECT * FROM
@@ -27,7 +27,7 @@ db:
       pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS pc_download_count
     FROM taptap_app_sell_list_hourly
     WHERE app_id IS NOT NULL
-    AND crawled_at >= substr(datetime('now', 'localtime', '-8 hour'), 1, 13)
+    AND crawled_at >= substr(datetime('now', 'localtime', '-24 hour'), 1, 13)
     ORDER BY app_id, crawled_at) as t2
 trigger_type: system
 schedule: "25 */2 * * *"
