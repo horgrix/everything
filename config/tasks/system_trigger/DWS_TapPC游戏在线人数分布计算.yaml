@@ -1,0 +1,84 @@
+name: "DWS_TapPC游戏在线人数分布计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      crawled_at,
+      SUM(online_players) as online_players,
+      COUNT(*) as stat_game_cnt, 
+      SUM(CASE WHEN list_type = 'pc_played' THEN online_players ELSE 0 END) AS pc_played_online_players,
+      SUM(CASE WHEN list_type = 'pc_played' THEN 1 ELSE 0 END) AS stat_pc_played_game_cnt,
+      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN online_players ELSE 0 END) AS pc_emulator_played_online_players,
+      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN 1 ELSE 0 END) AS stat_pc_emulator_played_game_cnt
+    FROM(
+      SELECT
+          a.crawled_at,
+          a.app_id,
+          b.app_name,
+          b.list_type as list_type,
+          a.online_players as online_players
+      FROM(
+          SELECT 
+              crawled_at,
+              app_id,
+              online_players
+          FROM
+          taptap_pc_online_players
+          WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')) a
+      LEFT JOIN 
+          (SELECT * FROM taptap_pc_played_ids_daily WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')) b
+      ON
+      a.app_id = b.app_id)
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "25 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_pc_source_online_players"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: online_players
+          type: INTEGER
+        - name: stat_game_cnt
+          type: INTEGER
+        - name: pc_played_online_players
+          type: INTEGER
+        - name: stat_pc_played_game_cnt
+          type: INTEGER
+        - name: pc_emulator_played_online_players
+          type: INTEGER
+        - name: stat_pc_emulator_played_game_cnt
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_pc_source_online_players_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: online_players
+          source: online_players
+          to_number: true   
+        - name: stat_game_cnt
+          source: stat_game_cnt
+          to_number: true     
+        - name: pc_played_online_players
+          source: pc_played_online_players
+          to_number: true
+        - name: stat_pc_played_game_cnt
+          source: stat_pc_played_game_cnt
+          to_number: true
+        - name: pc_emulator_played_online_players
+          source: pc_emulator_played_online_players
+          to_number: true
+        - name: stat_pc_emulator_played_game_cnt
+          source: stat_pc_emulator_played_game_cnt
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

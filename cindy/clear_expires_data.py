@@ -24,6 +24,8 @@ RULES = [
     ("taptap_pc_hot_list_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("taptap_ad_loading_hourly", "%Y-%m-%d %H", "-360 hours"),
     ("dws_taptap_sell_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("dws_taptap_pc_source_games_online_players", "%Y-%m-%d %H", "-4 hours"),
+    ("dws_taptap_pc_source_online_players", "%Y-%m-%d %H", "-4 hours"),
     ("dws_taptap_sell_daily", "%Y-%m-%d", "-36 days"),
     ("dws_taptap_sell_monthly", "%Y-%m", "-24 months"),
     ("dws_taptap_download_hourly", "%Y-%m-%d %H", "-36 hours"),

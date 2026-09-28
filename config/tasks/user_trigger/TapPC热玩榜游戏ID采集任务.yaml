@@ -57,6 +57,8 @@ outputs:
       type: INTEGER
     - name: app_name
       type: TEXT
+    - name: list_type
+      type: TEXT
     - name: crawled_at
       type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
     indexes:
@@ -74,6 +76,8 @@ outputs:
       to_number: true
     - name: app_name
       path: app.title
+    - name: list_type
+      value: '{list_type}'
     - name: crawled_at
       value: '{now:%Y-%m-%d}'
 retry:
