@@ -68,6 +68,10 @@ class CrawlerEngine:
         error_msg = None
         request_interval = float(task_config.get("request_interval", 0) or 0)
 
+        # 批量上传：每个 output 累积清洗后的 rows，按 batch_size 分批 POST
+        outputs = self._resolve_outputs(task_config)
+        collected_rows = [[] for _ in outputs]
+
         for idx, ctx in enumerate(contexts):
             # 每个 iterate 请求之间的固定间隔，用于限流 / 避免被限制访问
             if idx > 0 and request_interval > 0:
@@ -90,9 +94,24 @@ class CrawlerEngine:
             if raw_data is None:
                 continue
 
-            # 2. Expand outputs + process each via pipeline
-            for output_config in self._resolve_outputs(task_config):
-                total += self._pipeline.process(raw_data, output_config, db, ctx)
+            # 2. Expand outputs + process each via pipeline（批量模式累积 rows）
+            for oi, output_config in enumerate(outputs):
+                total += self._pipeline.process(
+                    raw_data, output_config, db, ctx,
+                    collect_rows=collected_rows[oi],
+                )
+                # 攒够 batch_size 就 flush 一批（未配置 batch_size 时循环结束统一 flush）
+                batch_size = self._get_batch_size(output_config)
+                if batch_size > 0 and len(collected_rows[oi]) >= batch_size:
+                    total += self._flush_output_api(
+                        output_config, collected_rows[oi], base_context,
+                    )
+
+        # 3. 循环结束后 flush 每个 output 剩余的 rows
+        for oi, output_config in enumerate(outputs):
+            total += self._flush_output_api(
+                output_config, collected_rows[oi], base_context,
+            )
 
         return {
             "new": total.inserted,
@@ -195,3 +214,31 @@ class CrawlerEngine:
     def _resolve_outputs(self, task_config: dict) -> list[dict]:
         """Return outputs config list (loader wraps single-output as [output])."""
         return task_config.get("outputs", [])
+
+    # ================================================================
+    # Batched target_api upload
+    # ================================================================
+
+    @staticmethod
+    def _get_batch_size(output_config: dict) -> int:
+        """读取 output.target_api.batch_size（正整数），未配置/非法返回 0。
+
+        batch_size > 0 时按批 flush；= 0 时循环结束后统一 flush。
+        """
+        target_api = output_config.get("target_api") or {}
+        raw = target_api.get("batch_size", 0)
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 0
+
+    def _flush_output_api(
+        self, output_config: dict, collected_rows: list, context: dict,
+    ) -> PipelineResult:
+        """flush 单个 output 累积的 rows 到 target_api，并清空缓冲。"""
+        target_api = output_config.get("target_api")
+        if not target_api or not collected_rows:
+            return PipelineResult()
+        result = self._pipeline.flush_api(target_api, collected_rows, context)
+        collected_rows.clear()
+        return result

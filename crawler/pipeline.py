@@ -60,6 +60,7 @@ class DataPipeline:
         output_config: dict,
         db,
         context: dict,
+        collect_rows: list | None = None,
     ) -> PipelineResult:
         """
         Process one output target against raw data.
@@ -72,6 +73,11 @@ class DataPipeline:
           5. Inject source_url
           6. Batch UPSERT into database (only when target_table present)
           7. POST rows to remote API (only when target_api present)
+
+        Args:
+            collect_rows: 批量上传模式。传入一个 list 时，清洗后的 rows
+                会被 extend 进去，而不是立即 POST（由调用方统一 flush）。
+                为 None 时保持逐次立即上传（向后兼容）。
 
         Returns:
             PipelineResult with inserted/updated/total/api_sent/api_failed counts.
@@ -124,12 +130,37 @@ class DataPipeline:
 
         # 7. POST to remote API（仅 target_api）
         if target_api:
-            if self._post_to_api(target_api, cleaned, context):
+            if collect_rows is not None:
+                # 批量模式：累积 rows，由 engine 在循环结束后统一 flush
+                collect_rows.extend(cleaned)
+            elif self._post_to_api(target_api, cleaned, context):
                 result.api_sent = len(cleaned)
             else:
                 result.api_failed = len(cleaned)
 
         return result
+
+    def flush_api(
+        self,
+        target_api_config: dict,
+        rows: list[dict],
+        context: dict,
+    ) -> PipelineResult:
+        """把攒批累积的 rows 统一 POST 到 target_api（一次批量上传）。
+
+        Args:
+            target_api_config: output 的 target_api 配置（含 url/method/headers）。
+            rows: 累积的清洗后行数据。
+            context: 用于解析 target_api url 中的模板变量。
+
+        Returns:
+            PipelineResult with api_sent/api_failed counts.
+        """
+        if not rows:
+            return PipelineResult()
+        if self._post_to_api(target_api_config, rows, context):
+            return PipelineResult(api_sent=len(rows))
+        return PipelineResult(api_failed=len(rows))
 
     def _post_to_api(
         self,

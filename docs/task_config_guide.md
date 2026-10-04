@@ -1,8 +1,9 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v2.0 | 最后更新：2026-08-03
+> 版本：v2.1 | 最后更新：2026-08-03
 >
 > 对应代码版本：重构后（注册表模式 Cleaner/Parser + 统一 DataSource 抽象层 + outputs 多表架构）
+> v2.1 新增：`target_api` 批量上传（`batch_size` 分批）、HTTP 连接池复用
 
 ---
 
@@ -103,7 +104,8 @@ URL / SDK / 文件 / 数据库
          ├─── Parser           3. 解析原始数据 → list[dict]
          ├─── Cleaner          4. 清洗每个字段 + where 过滤
          ├─── source_url       5. 注入采集来源 URL
-         └─── Database         6. ON CONFLICT UPSERT 批量写入
+         ├─── Database         6. ON CONFLICT UPSERT 批量写入
+         └─── target_api       7. 累积 rows（循环结束后按 batch_size 批量上传）
 ```
 
 ### 数据源类型速查
@@ -463,9 +465,32 @@ outputs:
 | `url` | string | 是 | — | 远程接口地址，支持 `{var}` 模板变量 |
 | `method` | string | 否 | `POST` | HTTP 方法 |
 | `headers` | dict | 否 | `{"Content-Type": "application/json"}` | 附加请求头（静态） |
+| `batch_size` | int | 否 | `0`（不分批） | 攒够 N 条就 POST 一批，循环结束 flush 剩余 |
 
 请求体固定为 `{"rows": [{列: 值}, ...]}`，`rows` 即 parser 清洗后的结果（不含本地库
 自增 `id`）。字段默认值（如 `crawled_at`）需在 `fields` 里显式声明。
+
+### 批量上传（batch_size）
+
+当任务通过 `iterate` 产生大量请求时（例如几百个 app_id），引擎会在**整个任务循环
+内累积清洗后的 rows**，而不是每处理完一个 iterate 就单独 POST 一次。控制方式：
+
+- **不配 `batch_size`（默认）**：所有 iterate 处理完后，每个 output 统一 POST 一次。
+  适合数据量不大（几百条以内）的场景，网络开销最小。
+- **配置 `batch_size: N`**：累积到 N 条就 POST 一批，循环结束后 flush 剩余。
+  适合数据量很大、或想限制单次请求体大小的场景，同时把失败影响控制在一批内。
+
+```yaml
+outputs:
+  - target_table: taptap_pc_online_players
+    target_api:
+      url: "https://horgrix.com/api/data/taptap_pc_online_players/rows/batch"
+      batch_size: 200          # 每攒 200 条上传一批
+    parser: {...}
+```
+
+> 注意：批量上传用任务的 base context 解析 `url`，因此 `url` 中不能引用 iterate
+> 变量（如 `{app_id}`）；引用时间类变量（`{today}`、`{now}` 等）没有问题。
 
 > 上传失败仅记日志并计入统计（`api_failed`），不会中断任务。
 
@@ -1123,6 +1148,10 @@ request_interval: 1          # 每次 iterate 请求之间固定等待 1 秒
 ```
 
 > `request_interval` 为顶层字段，单位秒，默认 `0`（不等待）。仅在存在多个 iterate context 时生效。
+>
+> 支持小数实现毫秒级间隔：`0.5` = 500ms，`0.1` = 100ms。注意写纯数字，不要写
+> `500ms` 这类带单位字符串。极短间隔（<10ms）受事件循环时钟精度限制，
+> 实际以 10~50ms 为下限。
 >
 > 配合浏览器模式时，每个 iterate 都会启动独立浏览器上下文，开销较大。建议合理控制 `values` 数量。
 

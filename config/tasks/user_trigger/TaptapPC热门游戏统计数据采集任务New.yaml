@@ -17,9 +17,9 @@ iterate:
   - 130630
   - 130651
   - 139301
+  - 141289
   - 145396
   - 146791
-  - 161414
   - 168332
   - 172664
   - 176228
@@ -41,22 +41,24 @@ iterate:
   - 214603
   - 218210
   - 219503
+  - 220861
   - 221380
   - 221583
   - 222089
   - 223632
-  - 224212
   - 224267
   - 226183
+  - 226568
   - 229966
   - 231537
   - 232326
+  - 233514
   - 233558
   - 234280
   - 234493
   - 236627
-  - 238517
   - 239372
+  - 241042
   - 242904
   - 243110
   - 247283
@@ -70,12 +72,12 @@ iterate:
   - 383413
   - 387264
   - 388717
-  - 498636
   - 524022
   - 550307
   - 613799
   - 617522
   - 622867
+  - 708799
   - 708927
   - 711932
   - 712207
@@ -86,10 +88,8 @@ iterate:
   - 720041
   - 723266
   - 732013
-  - 732091
   - 733498
   - 733908
-  - 736959
   - 737341
   - 737825
   - 741793
@@ -99,11 +99,12 @@ iterate:
   - 747914
   - 748031
   - 749379
-  - 751890
   - 751902
+  - 751906
   - 751919
   - 752141
-  - 752178
+  - 752180
+  - 752419
   - 752573
   - 752978
   - 755439
@@ -112,12 +113,12 @@ iterate:
   - 760944
   - 766061
   - 768687
-  - 771648
   - 774226
   - 775179
   - 820664
   - 840947
-request_interval: 1
+  - 887316
+request_interval: 0.75
 url: https://www.taptap.cn/webapiv2/review/v2/list-by-app?app_id={app_id}&limit=1&sort=hot&stage_type=1&X-UA=V%3D1%26PN%3DWebApp%26LANG%3Dzh_CN%26VN_CODE%3D100000000%26LOC%3DCN%26PLT%3DPC%26DS%3DPC%26UID%3D9a6ce663-b36b-4427-a991-b59918a2bd0b%26OS%3DWindows%26OSV%3D10%26DT%3DPC
 outputs:
 - target_table: taptap_pc_hot_list_hourly
@@ -164,6 +165,7 @@ outputs:
       - distribution_type
   target_api:
     url: https://horgrix.com/api/data/taptap_pc_hot_list_hourly/rows/batch
+    batch_size: 165
   parser:
     type: json
     root_path: data.list

@@ -96,12 +96,16 @@ class HttpSource(DataSource):
         backoff_base: float = 2.0,
         timeout: int = 30,
         max_redirects: int = 5,
+        connector_limit: int = 100,
     ):
         self._browser_source = browser_source
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._timeout = timeout
         self._max_redirects = max_redirects
+        self._connector_limit = connector_limit
+        # 复用的 ClientSession（懒加载），避免每个请求都重新 TCP+TLS 握手
+        self._session: aiohttp.ClientSession | None = None
 
     # ---- DataSource interface ----
 
@@ -129,27 +133,25 @@ class HttpSource(DataSource):
         headers = self._build_headers(task_config, context, method, url)
 
         last_error = None
+        session = self._get_session()
         for attempt in range(1, max_retries + 1):
             try:
-                async with aiohttp.ClientSession(
+                async with session.request(
+                    method=method,
+                    url=url,
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=self._timeout),
-                ) as session:
-                    async with session.request(
-                        method=method,
-                        url=url,
-                        max_redirects=self._max_redirects,
-                    ) as response:
-                        if response.status < 500:
-                            text = await response.text(encoding=encoding)
-                            return text
+                    max_redirects=self._max_redirects,
+                ) as response:
+                    if response.status < 500:
+                        text = await response.text(encoding=encoding)
+                        return text
 
-                        last_error = RuntimeError(
-                            f"Server returned {response.status}, URL: {url}"
-                        )
-                        logger.warning(
-                            "Attempt %d/%d failed: %s", attempt, max_retries, last_error
-                        )
+                    last_error = RuntimeError(
+                        f"Server returned {response.status}, URL: {url}"
+                    )
+                    logger.warning(
+                        "Attempt %d/%d failed: %s", attempt, max_retries, last_error
+                    )
 
             except (aiohttp.ClientError, asyncio.TimeoutError) as e:
                 last_error = e
@@ -167,6 +169,29 @@ class HttpSource(DataSource):
         ) from last_error
 
     # ---- Internal helpers ----
+
+    def _get_session(self) -> aiohttp.ClientSession:
+        """懒加载并复用 ClientSession，启用连接池（keep-alive + DNS 缓存）。
+
+        复用同一 session 后，同一 host 的请求会复用 TCP 连接，
+        避免每个请求都重新进行 TCP 建连 + TLS 握手。
+        """
+        if self._session is None or self._session.closed:
+            connector = aiohttp.TCPConnector(
+                limit=self._connector_limit,
+                ttl_dns_cache=300,
+            )
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=aiohttp.ClientTimeout(total=self._timeout),
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """关闭复用的 ClientSession（应用/测试退出时调用）。"""
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+            self._session = None
 
     async def _apply_delay(self, task_config: dict) -> None:
         """Apply random delay if anti_spider is enabled."""

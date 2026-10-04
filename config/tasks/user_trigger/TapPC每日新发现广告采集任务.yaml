@@ -40,6 +40,14 @@ outputs:
     columns:
     - name: ad_type
       type: TEXT
+    - name: tag_1
+      type: TEXT
+    - name: tag_2
+      type: TEXT
+    - name: tag_3
+      type: TEXT
+    - name: app_name
+      type: TEXT
     - name: app_id
       type: INTEGER
     - name: position
@@ -54,12 +62,21 @@ outputs:
       unique: true
   target_api:
       url: "https://horgrix.com/api/data/taptap_ad_loading_hourly/rows/batch"
+      batch_size: 103  # 每攒 100 条上传一批
   parser:
     type: json
     root_path: "data.list" 
     fields:
     - name: ad_type
       value: "tappc_2671"
+    - name: tag_1
+      path: app.tags.0.value
+    - name: tag_2
+      path: app.tags.1.value
+    - name: tag_3
+      path: app.tags.2.value
+    - name: app_name
+      path: app.title
     - name: app_id
       path: app.id
       to_number: true
