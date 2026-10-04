@@ -9,6 +9,7 @@
 """
 
 import os
+import sys
 import argparse
 import asyncio
 import signal
@@ -109,6 +110,7 @@ async def run_once(task_name: str, config_dir: str, db_path: str):
     if stats.get("error"):
         print(f"  错误: {stats['error']}")
 
+    await app.engine.close()
     app.db.close()
 
 
@@ -163,11 +165,17 @@ async def _async_main(args):
         if api_server:
             api_server.should_exit = True
             await api_task
+        await app.engine.close()
         app.db.close()
         logger.info("系统已退出")
 
 
 def main():
+    # Windows 下重定向到文件时默认用 GBK 编码，导致中文日志乱码；强制 UTF-8
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
+
     args = parse_args()
     setup_logging(args.log_level)
     asyncio.run(_async_main(args))

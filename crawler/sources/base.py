@@ -72,3 +72,17 @@ class SourceRegistry:
     def get_all_types(self) -> list[str]:
         """Return all registered source type strings."""
         return sorted(self._sources.keys())
+
+    async def close(self) -> None:
+        """关闭所有持有资源的 source（如 aiohttp ClientSession）。
+
+        按实例去重（多个 type 可能映射到同一实例），并跳过没有 close 方法的 source。
+        """
+        seen: set[int] = set()
+        for source in self._sources.values():
+            if id(source) in seen:
+                continue
+            seen.add(id(source))
+            close = getattr(source, "close", None)
+            if close is not None:
+                await close()

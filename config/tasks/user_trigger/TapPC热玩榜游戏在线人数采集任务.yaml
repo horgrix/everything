@@ -130,6 +130,7 @@ iterate:
   - 221561
   - 221583
   - 221932
+  - 222034
   - 222089
   - 223632
   - 224267
@@ -187,6 +188,7 @@ iterate:
   - 383413
   - 384832
   - 387264
+  - 387279
   - 388717
   - 494963
   - 498636
@@ -222,6 +224,7 @@ iterate:
   - 732091
   - 733498
   - 733908
+  - 734577
   - 736959
   - 737341
   - 737825
@@ -307,7 +310,10 @@ iterate:
   - 933318
   - 933677
   - 951335
-request_interval: 0.75
+request_interval: 0
+request_batch:
+  size: 4
+  pause: 1
 url: https://api.taptapdada.com/group/v1/online-players-count?X-UA=V%3D1%26PN%3DTapPC%26VN%3D2026.9.22-rel.2%26VN_CODE%3D2026092202%26CH%3Drep-rep_xjkzxfe8mjr--260404zncardT541F2%26OS%3Dwindows%26OSV%3D10.0.26200%26LANG%3Dzh_CN%26UID%3De9b0bab39d9f4473ac1fd64288376937%26SR%3D3840x2160%26DEB%3DLENOVO%26DEM%3D90XF0014CP%26NT%3D7%26VID%3D689667667&app_id={app_id}
 headers:
   user-agent: TapTap/2026.9.22-rel.2 (Build 2026092202/50f6c0c7) TapPC-Main/2026.9.22-rel.2

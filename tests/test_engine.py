@@ -114,3 +114,62 @@ class TestBatchedUpload:
         assert payloads[0]["rows"] == [{"app_id": 1}, {"app_id": 2}]
         assert payloads[1]["rows"] == [{"app_id": 3}, {"app_id": 4}]
         assert stats["api_sent"] == 4
+
+
+class TestRequestBatch:
+    """Tests for request_batch（每批顺序执行 N 个 → 批间暂停 M 秒）。"""
+
+    @staticmethod
+    def _run_with_sleeps(engine, task):
+        sleeps = []
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        db = Database(":memory:")
+        db.init_system_tables()
+        with mock.patch("crawler.engine.asyncio.sleep", fake_sleep):
+            asyncio.run(engine.run(task, db))
+        return sleeps
+
+    def test_batch_pause_every_n_requests(self, engine):
+        """size=3, pause=2，7 个请求 → 在第 4、第 7 个请求前各暂停 2 秒。"""
+        task = {
+            "name": "t",
+            "type": "api",
+            "url": "http://x/{app_id}",
+            "iterate": [{"var_name": "app_id", "values": list(range(1, 8))}],
+            "request_interval": 0,
+            "request_batch": {"size": 3, "pause": 2},
+            "outputs": [],
+        }
+        sleeps = self._run_with_sleeps(engine, task)
+        assert sleeps == [2.0, 2.0]
+
+    def test_no_batch_pause_by_default(self, engine):
+        """不配 request_batch 时无批间暂停（向后兼容）。"""
+        task = {
+            "name": "t",
+            "type": "api",
+            "url": "http://x/{app_id}",
+            "iterate": [{"var_name": "app_id", "values": [1, 2, 3, 4]}],
+            "request_interval": 0,
+            "outputs": [],
+        }
+        sleeps = self._run_with_sleeps(engine, task)
+        assert sleeps == []
+
+    def test_batch_pause_combined_with_interval(self, engine):
+        """批内 interval 与批间 pause 组合：interval 每个请求，pause 每批。"""
+        task = {
+            "name": "t",
+            "type": "api",
+            "url": "http://x/{app_id}",
+            "iterate": [{"var_name": "app_id", "values": list(range(1, 7))}],
+            "request_interval": 0.5,
+            "request_batch": {"size": 3, "pause": 2},
+            "outputs": [],
+        }
+        sleeps = self._run_with_sleeps(engine, task)
+        # 6 个请求：批内 interval 5 次（idx 1..5），批间 pause 1 次（idx=3 处）
+        assert sleeps == [0.5, 0.5, 0.5, 2.0, 0.5, 0.5]

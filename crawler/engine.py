@@ -42,6 +42,10 @@ class CrawlerEngine:
         self._pipeline = pipeline or DataPipeline()
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
 
+    async def close(self) -> None:
+        """关闭所有数据源持有的资源（如 HTTP 连接池）。"""
+        await self._sources.close()
+
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
         """
         Execute a crawl task.
@@ -68,17 +72,35 @@ class CrawlerEngine:
         error_msg = None
         request_interval = float(task_config.get("request_interval", 0) or 0)
 
+        # 批次节奏：每批顺序执行 request_batch.size 个请求，批间暂停 request_batch.pause 秒
+        request_batch = task_config.get("request_batch") or {}
+        request_batch_size = int(request_batch.get("size", 0) or 0)
+        request_batch_pause = float(request_batch.get("pause", 0) or 0)
+
         # 批量上传：每个 output 累积清洗后的 rows，按 batch_size 分批 POST
         outputs = self._resolve_outputs(task_config)
         collected_rows = [[] for _ in outputs]
 
         for idx, ctx in enumerate(contexts):
-            # 每个 iterate 请求之间的固定间隔，用于限流 / 避免被限制访问
+            # 每个 iterate 请求之间的固定间隔（批内），用于限流 / 避免被限制访问
             if idx > 0 and request_interval > 0:
                 logger.debug(
                     "Iterate request interval: waiting %.2fs", request_interval
                 )
                 await asyncio.sleep(request_interval)
+
+            # 批间暂停：每 request_batch_size 个请求后暂停一次（第一批前不暂停）
+            if (
+                request_batch_size > 0
+                and idx > 0
+                and idx % request_batch_size == 0
+                and request_batch_pause > 0
+            ):
+                logger.debug(
+                    "Request batch pause: waiting %.2fs (after %d requests)",
+                    request_batch_pause, idx,
+                )
+                await asyncio.sleep(request_batch_pause)
 
             # Resolve template variables in all context values before fetch
             ctx = self._resolve_all_templates(ctx)
