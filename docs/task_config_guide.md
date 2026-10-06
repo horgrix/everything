@@ -1,9 +1,10 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v2.1 | 最后更新：2026-08-03
+> 版本：v2.2 | 最后更新：2026-08-03
 >
 > 对应代码版本：重构后（注册表模式 Cleaner/Parser + 统一 DataSource 抽象层 + outputs 多表架构）
 > v2.1 新增：`target_api` 批量上传（`batch_size` 分批）、HTTP 连接池复用
+> v2.2 新增：字段 `when` 条件分支（运行时动态选择解析路径）
 
 ---
 
@@ -847,12 +848,73 @@ parser:
 
 | 优先级 | 属性 | 何时生效 | 值示例 |
 |--------|------|----------|--------|
-| 1（最高） | `value` | 任何 type，字段配置了 `value` 时 | `"hello"` 或 `"{region}"` |
-| 2 | `position` | parser 配置了 `array_index_mapping: true` | `0`, `1`, `2` |
-| 3 | `column` / `selector` / `attr` | `html_table` 或 `css_selector` | `column: 2` + `selector: "a"` + `attr: "href"` |
-| 4（最低） | `source` 或 `path` | JSON dict 模式（`json` / `sdk_mapping`） | `source: "原字段名"` 或 `path: "data.items.0.title"` |
+| 1（最高） | `when` | 任何 type，字段配置了 `when` 时 | 见下文「when 条件分支」 |
+| 2 | `value` | 任何 type，字段配置了 `value` 时 | `"hello"` 或 `"{region}"` |
+| 3 | `position` | parser 配置了 `array_index_mapping: true` | `0`, `1`, `2` |
+| 4 | `column` / `selector` / `attr` | `html_table` 或 `css_selector` | `column: 2` + `selector: "a"` + `attr: "href"` |
+| 5（最低） | `source` 或 `path` | JSON dict 模式（`json` / `sdk_mapping`） | `source: "原字段名"` 或 `path: "data.items.0.title"` |
 
 > **source > path**：当 `source` 和 `path` 同时配置时，`source` 优先。
+
+### when 条件分支（运行时动态选择提取逻辑）
+
+当字段需要**根据数据内容动态选择解析路径**时使用。典型场景：JSON 数组里每个元素
+带 `type` 字段（如 `app` / `moment`），不同类型的数据放在不同 key 下，取值路径不同：
+
+```json
+{"data": {"list": [
+  {"type": "app",    "app":    {"id": 11, "title": "游戏A"}},
+  {"type": "moment", "moment": {"app": {"id": 22, "title": "游戏B"}}}
+]}}
+```
+
+```yaml
+parser:
+  type: json
+  root_path: data.list
+  fields:
+    - name: app_id
+      when:                           # 按顺序匹配，第一个满足的分支生效
+        - field: "type"              # 从当前行取 type 字段（点分 path）
+          op: "=="
+          value: "app"
+          then: { path: "app.id" }    # 满足则用这个内嵌字段配置提取
+        - field: "type"
+          op: "=="
+          value: "moment"
+          then: { path: "moment.app.id" }
+      otherwise: { path: "app.id" }   # 都不满足时的兜底（可选）
+
+    - name: title
+      when:
+        - field: "type"
+          op: "=="
+          value: "app"
+          then: { path: "app.title" }
+        - field: "type"
+          op: "=="
+          value: "moment"
+          then: { path: "moment.app.title" }
+```
+
+`when` 分支字段说明：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `field` | 是 | 判断哪个值：当前行的点分 path（如 `type`、`moment.app.id`），取不到时回退到 context 变量 |
+| `op` | 否 | 比较运算符，默认 `==` |
+| `value` | 否 | 期望值，支持模板变量（如 `{today}`、`{app_id}`） |
+| `then` | 是 | 满足时用的内嵌字段配置，复用 `value`/`path`/`source`/`column` 等，可嵌套 `when` |
+| `otherwise` | 否 | 所有分支都不满足时的兜底字段配置（位于 `when` 外层） |
+
+支持运算符：`==` `!=` `in` `not_in` `>` `<` `>=` `<=` `contains`。
+
+> ⚠️ **判断字段键名用 `field`，不要用 `on`**：`on` 是 YAML 1.1 的布尔保留字
+> （等价于 `true`），裸写 `on: "type"` 会被 PyYAML 解析成布尔键 `True`，导致条件永远
+> 匹配失败。如需兼容旧写法，请写成加引号的 `"on": "type"`。
+
+> `when` 优先级最高（高于 `value`/`path`）。当所有分支都不满足且没有 `otherwise` 时，
+> 会降级到字段自身的其他提取键（如 `path`），等价于把 `path` 当作兜底。
 
 ---
 

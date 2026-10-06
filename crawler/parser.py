@@ -63,6 +63,7 @@ class Parser:
         self._row_extractors: dict[str, RowExtractor] = {}
         self._field_strategies: list[tuple[FieldCondition, FieldExtractor]] = []
         self._filters: list[tuple[str, FilterFn]] = []
+        self._operators: dict[str, Callable[[Any, Any], bool]] = {}
         self._register_defaults()
 
     # ── Public registration API ────────────────────────────────
@@ -118,6 +119,20 @@ class Parser:
             filter_fn:  (rows, param_value) -> filtered rows.
         """
         self._filters.append((param_name, filter_fn))
+
+    def register_operator(
+        self,
+        op: str,
+        func: Callable[[Any, Any], bool],
+    ) -> None:
+        """
+        Register a when-condition operator.
+
+        Args:
+            op:   Operator name used in YAML when branch (e.g. "==", "in").
+            func: (actual_value, expected_value) -> bool.
+        """
+        self._operators[op] = func
 
     # ── Public entry points ────────────────────────────────────
 
@@ -412,6 +427,70 @@ class Parser:
         return None
 
     # ================================================================
+    # when-condition field extraction (runtime branching)
+    # ================================================================
+
+    @staticmethod
+    def _cond_has_when(field: dict, _parser_config: dict) -> bool:
+        return "when" in field
+
+    def _extract_when(self, row, field: dict, pc: dict, ctx: dict) -> Any:
+        """按运行时条件选择提取逻辑：遍历 when 分支，匹配则用 then 提取。
+
+        then / otherwise 是内嵌字段配置，递归复用策略链（支持嵌套 when）。
+        无匹配且无 otherwise 时返回 None，让策略链继续降级到 field 自身的
+        其他提取键（path/source/value 等）。
+        """
+        for branch in field.get("when", []):
+            if not isinstance(branch, dict):
+                continue
+            if self._branch_matches(row, branch, ctx):
+                then = branch.get("then")
+                if isinstance(then, dict):
+                    return self._extract_field_value(row, then, pc, ctx)
+        otherwise = field.get("otherwise")
+        if isinstance(otherwise, dict):
+            return self._extract_field_value(row, otherwise, pc, ctx)
+        return None
+
+    def _branch_matches(self, row, branch: dict, ctx: dict) -> bool:
+        # 注意：不能用 `on` 作为键名——它是 YAML 1.1 布尔保留字（会解析成 True）。
+        # 主键为 `field`，同时兼容加引号的 `"on"`。
+        field_name = branch.get("field", branch.get("on"))
+        op = branch.get("op", "==")
+        expected = branch.get("value")
+        actual = Parser._resolve_when_value(row, field_name, ctx)
+        expected = Parser._resolve_when_expected(expected, ctx)
+        return self._match_op(actual, op, expected)
+
+    @staticmethod
+    def _resolve_when_value(row, field_name, ctx: dict) -> Any:
+        """取条件判断值：field 优先作为当前行的点分 path，取不到回退到 context 变量。"""
+        if isinstance(field_name, str):
+            try:
+                return Parser._get_nested_value(row, field_name)
+            except (KeyError, IndexError, TypeError):
+                return ctx.get(field_name)
+        return field_name
+
+    @staticmethod
+    def _resolve_when_expected(value, ctx: dict) -> Any:
+        """期望值支持模板变量（如 {today}、{app_id}）。"""
+        if isinstance(value, str):
+            return URLTemplate.resolve(value, context=ctx)
+        return value
+
+    def _match_op(self, actual, op: str, expected) -> bool:
+        func = self._operators.get(op)
+        if func is None:
+            logger.warning("Unknown when operator: %s", op)
+            return False
+        try:
+            return func(actual, expected)
+        except (TypeError, ValueError):
+            return False
+
+    # ================================================================
     # Default filter implementations
     # ================================================================
 
@@ -455,6 +534,7 @@ class Parser:
         self.register_row_extractor("sdk_mapping", self._passthrough_list)
 
         # Field strategies — ordered from highest to lowest priority
+        self.register_field_extractor_first(self._cond_has_when, self._extract_when)
         self.register_field_extractor(self._cond_has_value, self._extract_value)
         self.register_field_extractor(self._cond_has_index, self._extract_index)
         self.register_field_extractor(self._cond_position_index, self._extract_position)
@@ -465,3 +545,17 @@ class Parser:
         self.register_filter("skip_lines", self._filter_skip_lines)
         self.register_filter("head", self._filter_head)
         self.register_filter("tail", self._filter_tail)
+
+        # when-condition operators
+        for op, fn in [
+            ("==", lambda a, e: a == e),
+            ("!=", lambda a, e: a != e),
+            ("in", lambda a, e: a in e),
+            ("not_in", lambda a, e: a not in e),
+            (">", lambda a, e: a > e),
+            ("<", lambda a, e: a < e),
+            (">=", lambda a, e: a >= e),
+            ("<=", lambda a, e: a <= e),
+            ("contains", lambda a, e: str(e) in str(a)),
+        ]:
+            self.register_operator(op, fn)
