@@ -1,0 +1,82 @@
+name: "DWS_TapApp首页广告每时汇总任务"
+depends_on:
+  - "DWS_TapTap游戏基础信息采集任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      crawled_at,
+      SUM(total_views) as total_views,
+      SUM(CASE WHEN platform = "android" THEN total_views ELSE 0 END) android_views,
+      SUM(CASE WHEN platform = "ios" THEN total_views ELSE 0 END) ios_views,
+      SUM(ad_views) as ad_views,
+      SUM(CASE WHEN platform = "android" THEN ad_views ELSE 0 END) android_ad_views,
+      SUM(CASE WHEN platform = "ios" THEN ad_views ELSE 0 END) ios_ad_views
+    FROM(
+      SELECT 
+        "android" as platform,
+        COUNT(*) AS total_views,
+        SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+        crawled_at
+      FROM taptap_app_android_landing_ad_hourly
+      WHERE substr(crawled_at, 1, 10) = '{today}'
+      GROUP BY crawled_at
+      UNION ALL
+      SELECT 
+        "ios" as platform,
+        COUNT(*) AS total_views,
+        SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+        crawled_at
+      FROM taptap_app_ios_landing_ad_hourly
+      WHERE substr(crawled_at, 1, 10) = '{today}'
+      GROUP BY crawled_at) a
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "11 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_landing_ad_overview_hourly"
+    table_schema:
+      columns:
+        - name: total_views
+          type: INTEGER
+        - name: android_views
+          type: INTEGER
+        - name: ios_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: android_ad_views
+          type: INTEGER
+        - name: ios_ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_app_landing_ad_overview_hourly_crawled_at_app_id
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: total_views
+          source: total_views
+          to_number: true
+        - name: android_views
+          source: android_views
+          to_number: true 
+        - name: ios_views
+          source: ios_views
+          to_number: true   
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: android_ad_views
+          source: android_ad_views
+          to_number: true 
+        - name: ios_ad_views
+          source: ios_ad_views
+          to_number: true      
+        - name: crawled_at
+          source: crawled_at
