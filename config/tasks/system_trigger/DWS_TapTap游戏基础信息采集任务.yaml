@@ -26,7 +26,7 @@ db:
     FROM taptap_app_ios_landing_ad_hourly
     WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
-schedule: "15 * * * *"
+schedule: "8 * * * *"
 outputs:
   - target_table: "dws_taptap_game_basic_info_monthly"
     table_schema:

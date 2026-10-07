@@ -46,7 +46,7 @@ db:
     WHERE total_download_count IS NOT NULL 
     AND total_download_count > 0
 trigger_type: system
-schedule: "24 */2 * * *"
+schedule: "5 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_hourly"
     table_schema:

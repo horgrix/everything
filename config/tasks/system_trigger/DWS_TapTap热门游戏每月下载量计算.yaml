@@ -1,4 +1,6 @@
 name: "DWS_TapTap热门游戏每月下载量计算"
+depends_on:
+  - "DWS_TapTap热门游戏每日下载量计算"
 type: db
 db:
   type: sqlite
@@ -25,7 +27,7 @@ db:
     WHERE substr(crawled_at, 1, 7) = substr('{today}', 1, 7)
     GROUP BY substr(crawled_at, 1, 7), app_id
 trigger_type: system
-schedule: "28 */2 * * *"
+schedule: "7 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_monthly"
     table_schema:

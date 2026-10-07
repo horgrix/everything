@@ -1,4 +1,6 @@
 name: "DWS_TapPC游戏在线人数日计算"
+depends_on:
+  - "DWS_TapPC游戏在线人数汇总"
 type: db
 db:
   type: sqlite
@@ -71,7 +73,7 @@ db:
     ON
       substr(datetime(today.crawled_at || ':00', '-365 day'), 1, 13) = ago_365.crawled_at
 trigger_type: system
-schedule: "24 */2 * * *"
+schedule: "16 */2 * * *"
 outputs:
   - target_table: "dws_taptap_peak_players_hourly"
     table_schema:
