@@ -1,0 +1,126 @@
+name: "DWS_TapApp首页广告每日计算任务"
+depends_on:
+  - "DWS_TapTap游戏基础信息采集任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      b.crawled_at AS crawled_at,
+      b.app_id AS app_id, 
+      c.app_name AS app_name,
+      c.tag_1 AS tag_1,
+      c.tag_2 AS tag_2,
+      c.tag_3 AS tag_3,
+      c.distribution_type AS distribution_type,
+      b.total_views,
+      b.ad_views,
+      b.android_ad_views,
+      b.ios_ad_views
+    FROM(
+      SELECT 
+        crawled_at,
+        app_id,
+        SUM(total_views) as total_views,
+        SUM(ad_views) as ad_views,
+        SUM(CASE WHEN platform = "android" THEN ad_views ELSE 0 END) android_ad_views,
+        SUM(CASE WHEN platform = "ios" THEN ad_views ELSE 0 END) ios_ad_views
+      FROM(
+        SELECT 
+          "android" as platform,
+          app_id,
+          COUNT(*) AS total_views,
+          SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+          substr(crawled_at, 1, 10) as crawled_at
+        FROM taptap_app_android_landing_ad_hourly
+        WHERE substr(crawled_at, 1, 10) = '{today}'
+        GROUP BY substr(crawled_at, 1, 10), app_id
+        UNION ALL
+        SELECT 
+          "ios" as platform,
+          app_id,
+          COUNT(*) AS total_views,
+          SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+          substr(crawled_at, 1, 10) as crawled_at
+        FROM taptap_app_ios_landing_ad_hourly
+        WHERE substr(crawled_at, 1, 10) = '{today}'
+        GROUP BY substr(crawled_at, 1, 10), app_id) a
+      GROUP BY crawled_at, app_id) b
+    LEFT JOIN
+      (
+        SELECT 
+          distribution_type,
+          tag_1,
+          tag_2,
+          tag_3,
+          app_name,
+          app_id
+        FROM dws_taptap_game_basic_info_monthly
+        WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
+      ) c
+    ON 
+      b.app_id = c.app_id
+trigger_type: system
+schedule: "16 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_landing_ad_daily"
+    table_schema:
+      columns:
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: distribution_type
+          type: INTEGER
+        - name: total_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: android_ad_views
+          type: INTEGER
+        - name: ios_ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_app_landing_ad_daily_crawled_at_app_id
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true 
+        - name: app_name
+          source: app_name
+        - name: tag_1
+          source: tag_1     
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: distribution_type
+          source: distribution_type
+          to_number: true   
+        - name: total_views
+          source: total_views
+          to_number: true  
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: android_ad_views
+          source: android_ad_views
+          to_number: true 
+        - name: ios_ad_views
+          source: ios_ad_views
+          to_number: true      
+        - name: crawled_at
+          source: crawled_at

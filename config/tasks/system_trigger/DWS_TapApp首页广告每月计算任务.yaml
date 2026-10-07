@@ -1,0 +1,111 @@
+name: "DWS_TapApp首页广告每月计算任务"
+depends_on:
+  - "DWS_TapApp首页广告每日计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      b.distribution_type,
+      b.tag_1,
+      b.tag_2,
+      b.tag_3,
+      b.app_name,
+      a.app_id,
+      a.crawled_at,
+      a.total_views,
+      a.ad_views,
+      a.android_ad_views,
+      a.ios_ad_views
+    FROM(
+      SELECT
+        substr(crawled_at, 1, 7) AS crawled_at,
+        app_id, 
+        SUM(total_views) AS total_views,
+        SUM(ad_views) AS ad_views,
+        SUM(android_ad_views) AS android_ad_views,
+        SUM(ios_ad_views) AS ios_ad_views
+      FROM 
+        dws_taptap_app_landing_ad_daily
+      WHERE
+        substr(crawled_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
+      GROUP BY
+        substr(crawled_at, 1, 7), app_id) a
+    LEFT JOIN
+      (
+        SELECT 
+          distribution_type,
+          tag_1,
+          tag_2,
+          tag_3,
+          app_name,
+          app_id
+        FROM dws_taptap_game_basic_info_monthly
+        WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
+      ) b
+    ON 
+      a.app_id = b.app_id
+trigger_type: system
+schedule: "18 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_landing_ad_monthly"
+    table_schema:
+      columns:
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: distribution_type
+          type: INTEGER
+        - name: total_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: android_ad_views
+          type: INTEGER
+        - name: ios_ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_dws_taptap_app_landing_ad_monthly_crawled_at_app_id
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true 
+        - name: app_name
+          source: app_name
+        - name: tag_1
+          source: tag_1     
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: distribution_type
+          source: distribution_type
+          to_number: true   
+        - name: total_views
+          source: total_views
+          to_number: true  
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: android_ad_views
+          source: android_ad_views
+          to_number: true 
+        - name: ios_ad_views
+          source: ios_ad_views
+          to_number: true      
+        - name: crawled_at
+          source: crawled_at

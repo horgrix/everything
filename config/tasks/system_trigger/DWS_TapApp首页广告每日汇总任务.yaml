@@ -1,0 +1,57 @@
+name: "DWS_TapApp首页广告每日汇总任务"
+depends_on:
+  - "DWS_TapApp首页广告每日计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      crawled_at,
+      SUM(total_views) AS total_views,
+      SUM(ad_views) AS ad_views,
+      SUM(android_ad_views) AS android_ad_views,
+      SUM(ios_ad_views) AS ios_ad_views
+    FROM 
+      dws_taptap_app_landing_ad_daily
+    WHERE
+      crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+    GROUP BY
+      crawled_at
+trigger_type: system
+schedule: "17 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_landing_ad_overview"
+    table_schema:
+      columns:
+        - name: total_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: android_ad_views
+          type: INTEGER
+        - name: ios_ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_app_landing_ad_overview_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: total_views
+          source: total_views
+          to_number: true  
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: android_ad_views
+          source: android_ad_views
+          to_number: true 
+        - name: ios_ad_views
+          source: ios_ad_views
+          to_number: true      
+        - name: crawled_at
+          source: crawled_at

@@ -1,0 +1,70 @@
+name: "DWS_TapTap游戏基础信息采集任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      substr(crawled_at, 1, 7) as crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      app_name,
+      app_id
+    FROM taptap_app_android_landing_ad_hourly
+    WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    UNION
+    SELECT 
+      substr(crawled_at, 1, 7) as crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      app_name,
+      app_id
+    FROM taptap_app_ios_landing_ad_hourly
+    WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+trigger_type: system
+schedule: "15 * * * *"
+outputs:
+  - target_table: "dws_taptap_game_basic_info_monthly"
+    table_schema:
+      columns:
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: distribution_type
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_game_basic_info_monthly_crawled_at_app_id
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true 
+        - name: app_name
+          source: app_name
+        - name: tag_1
+          source: tag_1     
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: distribution_type
+          source: distribution_type
+          to_number: true      
+        - name: crawled_at
+          source: crawled_at

@@ -262,6 +262,11 @@ class TaskConfig(_ConfigBase):
         return [IterateVar(_raw=i) for i in items]
 
     @property
+    def depends_on(self) -> list[str]:
+        """任务依赖：上游任务名列表（上游成功完成后本任务才可执行）。"""
+        return self._raw.get("depends_on", [])
+
+    @property
     def browser(self) -> dict: return self._raw.get("browser", {})
 
     @property
