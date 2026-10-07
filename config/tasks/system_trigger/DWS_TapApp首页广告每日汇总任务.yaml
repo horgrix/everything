@@ -9,6 +9,8 @@ db:
     SELECT
       crawled_at,
       SUM(total_views) AS total_views,
+      SUM(android_views) AS android_views,
+      SUM(ios_views) AS ios_views,
       SUM(ad_views) AS ad_views,
       SUM(android_ad_views) AS android_ad_views,
       SUM(ios_ad_views) AS ios_ad_views
@@ -28,6 +30,10 @@ outputs:
           type: INTEGER
         - name: ad_views
           type: INTEGER
+        - name: android_views
+          type: INTEGER
+        - name: ios_views
+          type: INTEGER
         - name: android_ad_views
           type: INTEGER
         - name: ios_ad_views
@@ -43,6 +49,12 @@ outputs:
       fields:
         - name: total_views
           source: total_views
+          to_number: true  
+        - name: android_views
+          source: android_views
+          to_number: true 
+        - name: ios_views
+          source: ios_views
           to_number: true  
         - name: ad_views
           source: ad_views

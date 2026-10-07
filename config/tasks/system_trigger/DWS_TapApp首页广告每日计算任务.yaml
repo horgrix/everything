@@ -25,8 +25,8 @@ db:
         crawled_at,
         app_id,
         SUM(total_views) as total_views,
-        SUM(CASE WHEN platform = "android" THEN ad_views ELSE 0 END) android_views,
-        SUM(CASE WHEN platform = "ios" THEN ad_views ELSE 0 END) ios_views,
+        SUM(CASE WHEN platform = "android" THEN total_views ELSE 0 END) android_views,
+        SUM(CASE WHEN platform = "ios" THEN total_views ELSE 0 END) ios_views,
         SUM(ad_views) as ad_views,
         SUM(CASE WHEN platform = "android" THEN ad_views ELSE 0 END) android_ad_views,
         SUM(CASE WHEN platform = "ios" THEN ad_views ELSE 0 END) ios_ad_views
