@@ -1,0 +1,76 @@
+name: "DWS_TapApp首页广告排名计算任务"
+depends_on:
+  - "DWS_TapApp首页广告每日计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      *
+    FROM(
+      SELECT
+        "daily" as rank_type,
+        crawled_at,
+        app_id,
+        ad_views,
+        ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY ad_views DESC) AS ad_views_rank
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+      UNION ALL
+      SELECT
+        "weekly" as rank_type,
+        strftime('%Y-%W', crawled_at)  AS crawled_at,
+        app_id,
+        SUM(ad_views) AS ad_views,
+        ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%W', crawled_at) ORDER BY SUM(ad_views) DESC) AS ad_views_rank
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE strftime('%Y-%W', crawled_at) = strftime('%Y-%W', 'now', 'localtime')
+      GROUP BY app_id, strftime('%Y-%W', crawled_at)
+      UNION ALL
+      SELECT
+        "monthly" as rank_type,
+        strftime('%Y-%m', crawled_at)  AS crawled_at,
+        app_id,
+        SUM(ad_views) AS ad_views,
+        ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%m', crawled_at) ORDER BY SUM(ad_views) DESC) AS ad_views_rank
+      FROM dws_taptap_app_landing_ad_daily
+      WHERE strftime('%Y-%m', crawled_at) = strftime('%Y-%m', 'now', 'localtime')
+      GROUP BY app_id, strftime('%Y-%m', crawled_at)) a
+    WHERE ad_views_rank <= 10
+trigger_type: system
+schedule: "14 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_landing_ad_rank"
+    table_schema:
+      columns:
+        - name: rank_type
+          type: TEXT
+        - name: app_id
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: ad_views_rank
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL
+      indexes:
+        - name: idx_uk_dws_taptap_app_landing_ad_rank_rank_type_crawled_at_ad_views_rank
+          columns: [rank_type, crawled_at, ad_views_rank]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: rank_type
+          source: rank_type
+        - name: app_id
+          source: app_id
+          to_number: true  
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: ad_views_rank
+          source: ad_views_rank
+          to_number: true    
+        - name: crawled_at
+          source: crawled_at
