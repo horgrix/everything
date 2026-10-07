@@ -34,7 +34,7 @@ db:
           SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) = '{today}'
+        WHERE substr(crawled_at, 1, 10) >= '{yesterday}'
         GROUP BY substr(crawled_at, 1, 10), app_id
         UNION ALL
         SELECT 
@@ -44,7 +44,7 @@ db:
           SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) = '{today}'
+        WHERE substr(crawled_at, 1, 10) >= '{yesterday}'
         GROUP BY substr(crawled_at, 1, 10), app_id) a
       GROUP BY crawled_at, app_id) b
     LEFT JOIN
