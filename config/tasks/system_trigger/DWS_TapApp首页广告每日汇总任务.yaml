@@ -21,7 +21,7 @@ db:
     GROUP BY
       crawled_at
 trigger_type: system
-schedule: "12 * * * *"
+schedule: "25 * * * *"
 outputs:
   - target_table: "dws_taptap_app_landing_ad_overview"
     table_schema:

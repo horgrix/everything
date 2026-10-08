@@ -39,7 +39,7 @@ db:
       GROUP BY app_id, strftime('%Y-%m', crawled_at)) a
     WHERE ad_views_rank <= 10
 trigger_type: system
-schedule: "14 * * * *"
+schedule: "26 * * * *"
 outputs:
   - target_table: "dws_taptap_app_landing_ad_rank"
     table_schema:

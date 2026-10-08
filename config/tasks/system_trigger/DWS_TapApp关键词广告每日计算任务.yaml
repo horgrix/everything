@@ -1,4 +1,6 @@
 name: "DWS_TapApp关键词广告每日计算任务"
+depends_on:
+  - "DWS_TapTap游戏基础信息采集任务"
 type: db
 db:
   type: sqlite
@@ -100,7 +102,7 @@ db:
     ) a
     GROUP BY crawled_at, keyword
 trigger_type: system
-schedule: "11 * * * *"
+schedule: "20 * * * *"
 outputs:
   - target_table: "dws_taptap_app_keywords_ad_daily"
     table_schema:

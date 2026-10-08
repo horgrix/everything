@@ -107,7 +107,7 @@ db:
     ) a
     WHERE ad_views_rank <= 5
 trigger_type: system
-schedule: "14 * * * *"
+schedule: "21 * * * *"
 outputs:
   - target_table: "dws_taptap_app_keywords_ad_rank"
     table_schema:
