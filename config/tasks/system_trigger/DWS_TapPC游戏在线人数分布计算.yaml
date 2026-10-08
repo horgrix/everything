@@ -11,7 +11,9 @@ db:
       SUM(CASE WHEN list_type = 'pc_played' THEN online_players ELSE 0 END) AS pc_played_online_players,
       SUM(CASE WHEN list_type = 'pc_played' THEN 1 ELSE 0 END) AS stat_pc_played_game_cnt,
       SUM(CASE WHEN list_type = 'pc_emulator_played' THEN online_players ELSE 0 END) AS pc_emulator_played_online_players,
-      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN 1 ELSE 0 END) AS stat_pc_emulator_played_game_cnt
+      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN 1 ELSE 0 END) AS stat_pc_emulator_played_game_cnt,
+      SUM(CASE WHEN list_type = 'app_hot_creative' THEN online_players ELSE 0 END) AS app_hot_creative_played_online_players,
+      SUM(CASE WHEN list_type = 'app_hot_creative' THEN 1 ELSE 0 END) AS stat_app_hot_creative_played_game_cnt
     FROM(
       SELECT
           a.crawled_at,
@@ -33,7 +35,7 @@ db:
       a.app_id = b.app_id)
     GROUP BY crawled_at
 trigger_type: system
-schedule: "17 */2 * * *"
+schedule: "10 */2 * * *"
 outputs:
   - target_table: "dws_taptap_pc_source_online_players"
     table_schema:
@@ -52,6 +54,10 @@ outputs:
         - name: pc_emulator_played_online_players
           type: INTEGER
         - name: stat_pc_emulator_played_game_cnt
+          type: INTEGER
+        - name: app_hot_creative_played_online_players
+          type: INTEGER
+        - name: stat_app_hot_creative_played_game_cnt
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
@@ -79,6 +85,12 @@ outputs:
           to_number: true
         - name: stat_pc_emulator_played_game_cnt
           source: stat_pc_emulator_played_game_cnt
+          to_number: true
+        - name: app_hot_creative_played_online_players
+          source: app_hot_creative_played_online_players
+          to_number: true
+        - name: stat_app_hot_creative_played_game_cnt
+          source: stat_app_hot_creative_played_game_cnt
           to_number: true
         - name: crawled_at
           source: crawled_at
