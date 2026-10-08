@@ -17,7 +17,7 @@ db:
     FROM 
       dws_taptap_app_landing_ad_daily
     WHERE
-      crawled_at > '{days_ago:3}'
+      crawled_at = '{today}'
     GROUP BY
       crawled_at
 trigger_type: system
