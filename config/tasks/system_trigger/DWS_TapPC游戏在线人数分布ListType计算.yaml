@@ -27,7 +27,7 @@ db:
     ON
     a.app_id = b.app_id
 trigger_type: system
-schedule: "11 */2 * * *"
+schedule: "14 */2 * * *"
 outputs:
   - target_table: "dws_taptap_pc_source_games_online_players"
     table_schema:

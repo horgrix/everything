@@ -35,7 +35,7 @@ db:
       a.app_id = b.app_id)
     GROUP BY crawled_at
 trigger_type: system
-schedule: "10 */2 * * *"
+schedule: "13 */2 * * *"
 outputs:
   - target_table: "dws_taptap_pc_source_online_players"
     table_schema:
