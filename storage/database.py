@@ -55,7 +55,13 @@ class Database:
         # 1. 建表
         col_defs = []
         for col in columns:
-            parts = [col["name"], col["type"]]
+            col_name = col.get("name")
+            col_type = col.get("type")
+            if not col_name or not col_type:
+                raise ValueError(
+                    f"表 '{table_name}' 的列定义缺少 name 或 type 字段: {col}"
+                )
+            parts = [col_name, col_type]
             if "constraint" in col:
                 parts.append(col["constraint"])
             col_defs.append(" ".join(parts))

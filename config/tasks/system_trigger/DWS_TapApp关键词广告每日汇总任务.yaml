@@ -1,0 +1,177 @@
+name: "DWS_TapApp关键词广告每日汇总任务"
+depends_on:
+  - "DWS_TapApp关键词广告每日计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      crawled_at,
+      SUM(total_views) as total_views,
+      SUM(android_views) android_views,
+      SUM(ios_views) ios_views,
+      SUM(discover_views) discover_views,
+      SUM(android_discover_views) android_discover_views,
+      SUM(ios_discover_views) ios_discover_views,
+      SUM(hot_search_views) hot_search_views,
+      SUM(android_hot_search_views) android_hot_search_views,
+      SUM(ios_hot_search_views) ios_hot_search_views,
+      SUM(hot_spot_views) hot_spot_views,
+      SUM(android_hot_spot_views) android_hot_spot_views,
+      SUM(ios_hot_spot_views) ios_hot_spot_views,
+      SUM(ad_views) as ad_views,
+      SUM(android_ad_views) android_ad_views,
+      SUM(ios_ad_views) ios_ad_views,
+      SUM(discover_ad_views) discover_ad_views,
+      SUM(android_discover_ad_views) android_discover_ad_views,
+      SUM(ios_discover_ad_views) ios_discover_ad_views,
+      SUM(hot_search_ad_views) hot_search_ad_views,
+      SUM(android_hot_search_ad_views) android_hot_search_ad_views,
+      SUM(ios_hot_search_ad_views) ios_hot_search_ad_views,
+      SUM(hot_spot_ad_views) hot_spot_ad_views,
+      SUM(android_hot_spot_ad_views) android_hot_spot_ad_views,
+      SUM(ios_hot_spot_ad_views) ios_hot_spot_ad_views
+    FROM 
+      dws_taptap_app_keywords_ad_daily
+    WHERE
+      crawled_at >= '{days_ago:4}'
+    GROUP BY
+      crawled_at
+trigger_type: system
+schedule: "12 * * * *"
+outputs:
+  - target_table: "dws_taptap_app_keywords_ad_overview"
+    table_schema:
+      columns:
+        - name: total_views
+          type: INTEGER
+        - name: android_views
+          type: INTEGER
+        - name: ios_views
+          type: INTEGER
+        - name: discover_views
+          type: INTEGER
+        - name: android_discover_views
+          type: INTEGER
+        - name: ios_discover_views
+          type: INTEGER
+        - name: hot_search_views
+          type: INTEGER
+        - name: android_hot_search_views
+          type: INTEGER
+        - name: ios_hot_search_views
+          type: INTEGER
+        - name: hot_spot_views
+          type: INTEGER
+        - name: android_hot_spot_views
+          type: INTEGER
+        - name: ios_hot_spot_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: android_ad_views
+          type: INTEGER
+        - name: ios_ad_views
+          type: INTEGER
+        - name: discover_ad_views
+          type: INTEGER
+        - name: android_discover_ad_views
+          type: INTEGER
+        - name: ios_discover_ad_views
+          type: INTEGER
+        - name: hot_search_ad_views
+          type: INTEGER
+        - name: android_hot_search_ad_views
+          type: INTEGER
+        - name: ios_hot_search_ad_views
+          type: INTEGER
+        - name: hot_spot_ad_views
+          type: INTEGER
+        - name: android_hot_spot_ad_views
+          type: INTEGER
+        - name: ios_hot_spot_ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_app_keywords_ad_overview_crawled_at
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: total_views
+          source: total_views
+          to_number: true
+        - name: android_views
+          source: android_views
+          to_number: true 
+        - name: ios_views
+          source: ios_views
+          to_number: true 
+        - name: discover_views
+          source: discover_views
+          to_number: true
+        - name: android_discover_views
+          source: android_discover_views
+          to_number: true 
+        - name: ios_discover_views
+          source: ios_discover_views
+          to_number: true 
+        - name: hot_search_views
+          source: hot_search_views
+          to_number: true
+        - name: android_hot_search_views
+          source: android_hot_search_views
+          to_number: true 
+        - name: ios_hot_search_views
+          source: ios_hot_search_views
+          to_number: true 
+        - name: hot_spot_views
+          source: hot_spot_views
+          to_number: true
+        - name: android_hot_spot_views
+          source: android_hot_spot_views
+          to_number: true 
+        - name: ios_hot_spot_views
+          source: ios_hot_spot_views
+          to_number: true 
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: android_ad_views
+          source: android_ad_views
+          to_number: true 
+        - name: ios_ad_views
+          source: ios_ad_views
+          to_number: true 
+        - name: discover_ad_views
+          source: discover_ad_views
+          to_number: true
+        - name: android_discover_ad_views
+          source: android_discover_ad_views
+          to_number: true 
+        - name: ios_discover_ad_views
+          source: ios_discover_ad_views
+          to_number: true 
+        - name: hot_search_ad_views
+          source: hot_search_ad_views
+          to_number: true
+        - name: android_hot_search_ad_views
+          source: android_hot_search_ad_views
+          to_number: true 
+        - name: ios_hot_search_ad_views
+          source: ios_hot_search_ad_views
+          to_number: true 
+        - name: hot_spot_ad_views
+          source: hot_spot_ad_views
+          to_number: true
+        - name: android_hot_spot_ad_views
+          source: android_hot_spot_ad_views
+          to_number: true 
+        - name: ios_hot_spot_ad_views
+          source: ios_hot_spot_ad_views
+          to_number: true 
+        - name: crawled_at
+          source: crawled_at
