@@ -11,8 +11,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
-# 脚本位于 cindy/ 下，向上一级即项目根目录。
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# 脚本位于 config/tasks/utils/script/ 下，向上一级即项目根目录。
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DB_PATH = PROJECT_ROOT / "crawler.db"
 
 # (表名, crawled_at 的 strftime 格式, 保留时长修饰符)
