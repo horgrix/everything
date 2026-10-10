@@ -97,7 +97,7 @@ playwright install chromium
 
 ### 第一个任务
 
-1. 在 `config/tasks/user_trigger/` 下创建 `my_first_task.yaml`：
+1. 在 `config/tasks/demo/manual/` 下创建 `my_first_task.yaml`（手动任务放 `manual/` 子目录）：
 
 ```yaml
 name: "我的第一个采集任务"
@@ -171,6 +171,7 @@ everything/
 │   ├── cleaner.py                   # 数据清洗（20+ 清洗规则 + where 过滤）
 │   ├── template.py                  # URL 模板变量解析（{today} / {days_ago:N} 等）
 │   ├── dedup.py                     # URL 内存去重（TTLCache）
+│   ├── task_log.py                  # 组级文件日志（TaskLogHandler）
 │   └── sources/                     # 数据源抽象层
 │       ├── __init__.py              # 公开 API + create_default_registry()
 │       ├── base.py                  # DataSource ABC + SourceRegistry
@@ -205,8 +206,15 @@ everything/
 │   ├── data/                        # 离线 CSV 源数据
 │   └── tasks/
 │       ├── _example_all_features.yaml     # 完整功能示例
-│       ├── system_trigger/          # 定时任务（schedule 必填，APScheduler 自动注册）
-│       └── user_trigger/            # 手动任务（不允许 schedule，仅 API / --run-once 触发）
+│       └── <group>/                 # 分组（目录名 = group）
+│           ├── *.yaml               # system 定时任务（组根）
+│           ├── manual/*.yaml        # user 手动任务
+│           ├── script/              # 脚本目录（占位）
+│           └── README.md            # 组元数据说明
+│
+├── logs/                            # 组级运行时日志（logs/<group>/{data,runtime,error}.log）
+│
+├── scripts/                         # 维护脚本（migrate_groups.py 等）
 │
 ├── static/                          # Web Dashboard 前端
 │   ├── index.html                   # 仪表盘
@@ -405,18 +413,30 @@ registry.register("db", DbSource())
 
 ## 配置体系
 
-### 触发类型
+### 任务分组与触发类型
 
-任务文件按目录区分触发方式：
+任务文件按「目录名 = 分组（group）」组织，一个分组下同时容纳定时与手动任务：
 
 ```
 config/tasks/
-├── system_trigger/      ← 定时任务（必须有 schedule，APScheduler 自动注册）
-│   └── *.yaml           trigger_type: system
+├── <group>/                 ← 分组，目录名即 group
+│   ├── *.yaml               ← system 定时任务（必须有 schedule，APScheduler 自动注册）
+│   ├── manual/*.yaml        ← user 手动任务（不允许 schedule，仅 API / --run-once / 组触发）
+│   ├── script/              ← 脚本目录（占位）
+│   └── README.md            ← 组元数据说明
 │
-└── user_trigger/        ← 手动任务（不允许 schedule）
-    └── *.yaml           trigger_type: user  （仅 API POST /{name}/run 或 --run-once 触发）
+├── taptap-download/         ← 例如：TapTap 下载榜 / 热门游戏 / 基础信息
+├── taptap-ads/              ← TapApp / TapPC 广告采集与 DWS 计算
+├── taptap-pc-online/        ← TapPC 在线人数 / 热玩榜采集
+├── steam/                   ← Steam 游戏采集
+├── hk-finance/              ← 港股 / 东方财富 / 交易所采集
+└── torchlight/              ← 火炬之光赛季明细采集
 ```
+
+说明：
+
+- `group` 由目录名推导，**不写入 YAML**；`trigger_type` 由 YAML 显式声明，加载时校验与目录位置一致（组根 = system、`manual/` = user），不一致则报错跳过该任务。
+- 组级触发：`POST /api/tasks/groups/{group}/trigger` 触发该组所有根任务（`depends_on` 为空），并级联触发下游；另有 `/enable`、`/disable` 组级批量启停。
 
 ### 类型化配置对象
 
@@ -431,6 +451,8 @@ config = TaskConfig.from_dict(yaml_dict)
 config.name           # str
 config.type           # Literal["api", "web", "sdk", "csv", "excel", "db"]
 config.trigger_type   # Literal["system", "user"]
+config.group          # str（目录名 = group，由 loader 注入 _group）
+config.logging        # dict（组级日志开关 {enabled, data, runtime, error}）
 config.schedule       # str | None
 config.outputs        # list[OutputConfig]
 config.iterate        # list[IterateVar]
@@ -456,6 +478,10 @@ config.get("url")     # 等价于 config.url
 | `PUT` | `/api/tasks/{name}` | 更新任务（覆写 YAML + 重注册 + 热重载） |
 | `DELETE` | `/api/tasks/{name}` | 删除任务（调度器 + 文件 + 数据库） |
 | `POST` | `/api/tasks/{name}/run` | 手动触发单次执行 |
+| `GET` | `/api/tasks/groups` | 分组列表（各分组 system/user 任务数） |
+| `POST` | `/api/tasks/groups/{group}/trigger` | 组级触发（跑该组所有根任务并级联下游） |
+| `POST` | `/api/tasks/groups/{group}/enable` | 启用分组下所有任务 |
+| `POST` | `/api/tasks/groups/{group}/disable` | 禁用分组下所有任务 |
 | `GET` | `/api/data/tables` | 业务表列表 |
 | `GET` | `/api/data/{table}/columns` | 表结构 |
 | `GET` | `/api/data/{table}/query` | 数据查询（where/group_by/order_by/aggregate/filter） |
@@ -523,6 +549,8 @@ python main.py --api --db my_data.db --config my_tasks/
 | 功能 | 章节 | 核心配置项 |
 |------|------|-----------|
 | 基础信息 | 见文档 | `name`, `type`, `trigger_type`, `method`, `url`, `schedule` |
+| 任务分组 | 见文档 | 目录名 = group，组根 system / manual user；`depends_on` 可跨组 + 组触发 |
+| 组级日志 | 见文档 | `logging` 开关 → `logs/<group>/` 覆盖式（data/runtime/error） |
 | 浏览器模式 | 见文档 | `browser: {headless, wait_selector, actions: [click, scroll, wait], screenshot}` |
 | 动态参数 | 见文档 | `{today}`, `{yesterday}`, `{days_ago:N}`, `{timestamp}`, `{timestamp_ms}` |
 | 多值迭代 | 见文档 | `iterate: [{var_name, values}]` 支持多变量笛卡尔积 |

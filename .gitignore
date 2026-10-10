@@ -53,7 +53,7 @@ config/local.yaml
 config/secrets.yaml
 
 # 用户手动触发任务（含敏感签名信息，不提交到 git）
-config/tasks/user_trigger/
+config/tasks/**/manual/
 
 # db
 *.sqlite

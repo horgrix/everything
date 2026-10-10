@@ -1,6 +1,29 @@
 # 爬虫系统变更日志
 
-> 版本：v1.4 | 更新日期：2026-07-29
+> 版本：v1.5 | 更新日期：2026-10-09
+
+---
+
+## v1.5 任务分组 + 组级文件日志（2026-10-09 新增）
+
+### 任务分组（group）
+
+- 任务目录从旧版「system 定时 / user 手动两级目录」改为「目录名 = 分组」结构：`config/tasks/<group>/*.yaml`（组根 = system）、`config/tasks/<group>/manual/*.yaml`（= user）。
+- `group` 由目录名推导，不写入 YAML；`crawl_tasks` 表新增 `group` 列 + `idx_tasks_group` 索引，`upsert_task` 带 group。
+- `scheduler` 新增 `trigger_group(group)`；API 新增 `GET /api/tasks/groups`、`POST /api/tasks/groups/{group}/trigger`、`/enable`、`/disable`。
+
+### 组级文件日志（TaskLogHandler）
+
+- 新增 `crawler/task_log.py`：`TaskLogHandler` 覆盖式写 `logs/<group>/{data,runtime,error}.log`。
+- 任务级 `logging: {enabled, data, runtime, error}`，默认 error/runtime 开、data 关。
+- `engine._fetch_data` 成功后写 data.log；`scheduler._execute` / `main.run_once` 完成/失败写 runtime.log 与 error.log。
+
+### 迁移脚本 + gitignore
+
+- 新增 `scripts/migrate_groups.py`：旧目录 → 分组目录一次性迁移（默认 dry-run，`--apply` 执行）。
+- `.gitignore`：旧版 user 手动目录忽略项改为 `config/tasks/**/manual/`。
+
+**受影响文件**：`task_manager/loader.py`、`task_manager/schema.py`、`storage/database.py`、`storage/schema.sql`、`scheduler/scheduler.py`、`crawler/engine.py`、`crawler/task_log.py`（新增）、`api/routes/tasks.py`、`api/deps.py`、`static/tasks.html`、`main.py`、`scripts/migrate_groups.py`（新增）
 
 ---
 

@@ -29,31 +29,8 @@
         </button>
     </div>
 
-    <!-- system 任务 -->
-    <div class="mb-4">
-        <h5 class="mb-3"><span class="badge bg-primary me-2">system</span> 系统定时任务</h5>
-        <div class="table-responsive card">
-            <div class="card-body">
-            <table class="table table-hover mb-0">
-                <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
-                <tbody id="systemTaskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
-            </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- user 任务 -->
-    <div class="mb-4">
-        <h5 class="mb-3"><span class="badge bg-secondary me-2">user</span> 用户手动任务</h5>
-        <div class="table-responsive card">
-            <div class="card-body">
-            <table class="table table-hover mb-0">
-                <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th style="width:250px">操作</th></tr></thead>
-                <tbody id="userTaskList"><tr><td colspan="5" class="text-muted text-center">加载中...</td></tr></tbody>
-            </table>
-            </div>
-        </div>
-    </div>
+    <!-- 分组任务列表 -->
+    <div id="groupList"><div class="text-muted text-center">加载中...</div></div>
 
     <!-- 详情弹窗 -->
     <div class="modal fade" id="detailModal" tabindex="-1">
@@ -79,6 +56,10 @@
                         <input type="text" class="form-control" id="taskName" placeholder="唯一标识和配置文件名">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label fw-semibold">分组 group</label>
+                        <input type="text" class="form-control" id="taskGroup" placeholder="默认 default（对应 config/tasks/<group>/ 目录）">
+                    </div>
+                    <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <label class="form-label fw-semibold mb-0">YAML 配置 <span class="text-danger">*</span></label>
                             <button class="btn btn-sm btn-outline-secondary" id="loadTemplateBtn" onclick="loadTemplate()">
@@ -89,7 +70,7 @@
                             placeholder="name: my_task&#10;trigger_type: system&#10;type: web&#10;schedule: '0 * * * *'&#10;url: https://..."></textarea>
                         <div class="form-text mt-1">
                             在 YAML 顶层添加 <code>trigger_type: user</code> 创建手动任务（schedule 非必填）。
-                            默认 <code>trigger_type: system</code>。
+                            默认 <code>trigger_type: system</code>。分组由上方 group 字段决定（目录名），不在 YAML 中体现。
                         </div>
                     </div>
                 </div>
@@ -123,36 +104,71 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadTaskList() {
     try {
         const res = await apiGet('/tasks');
-        const systemTasks = res.data.filter(t => t.trigger_type === 'system');
-        const userTasks = res.data.filter(t => t.trigger_type === 'user');
-        renderTable('systemTaskList', systemTasks);
-        renderTable('userTaskList', userTasks);
+        renderGroups(res.data);
     } catch(e) {
-        document.getElementById('systemTaskList').innerHTML = `<tr><td colspan="5" class="text-danger text-center">加载失败: ${esc(e.message)}</td></tr>`;
-        document.getElementById('userTaskList').innerHTML = '';
+        document.getElementById('groupList').innerHTML = `<div class="text-danger text-center">加载失败: ${esc(e.message)}</div>`;
     }
 }
 
-function renderTable(tbodyId, tasks) {
-    const tbody = document.getElementById(tbodyId);
+function renderGroups(tasks) {
+    const container = document.getElementById('groupList');
     if (tasks.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-muted text-center">暂无任务</td></tr>';
+        container.innerHTML = '<div class="text-muted text-center">暂无任务</div>';
         return;
     }
-    tbody.innerHTML = tasks.map(t => `
+    // 按 group 分组（空 group 归为 default）
+    const groups = {};
+    for (const t of tasks) {
+        const g = t.group || 'default';
+        (groups[g] = groups[g] || []).push(t);
+    }
+    container.innerHTML = Object.keys(groups).sort().map(g => renderGroup(g, groups[g])).join('');
+}
+
+function renderGroup(group, tasks) {
+    const systemCount = tasks.filter(t => t.trigger_type === 'system').length;
+    const userCount = tasks.filter(t => t.trigger_type === 'user').length;
+    const rows = tasks.map(t => {
+        const deps = (t.depends_on || []).map(d => `<code>${esc(d)}</code>`).join(', ');
+        return `
         <tr>
-            <td><strong>${esc(t.name)}</strong></td>
+            <td>
+                <span class="badge ${t.trigger_type === 'system' ? 'bg-primary' : 'bg-secondary'} me-1">${esc(t.trigger_type)}</span>
+                <strong>${esc(t.name)}</strong>
+            </td>
             <td><span class="badge bg-secondary">${t.type || '-'}</span></td>
             <td>${(t.target_tables || []).map(tbl => `<code>${esc(tbl)}</code>`).join(', ') || '-'}</td>
             <td><code>${esc(t.schedule || '-')}</code></td>
+            <td>${deps || '<span class="text-muted">-</span>'}</td>
             <td class="text-nowrap">
                 <button class="btn btn-sm btn-outline-primary me-1" onclick="viewDetail('${esc(t.name)}')"><i class="bi bi-eye"></i></button>
                 <button class="btn btn-sm btn-outline-info me-1" onclick="showEditModal('${esc(t.name)}')" title="编辑配置"><i class="bi bi-pencil"></i></button>
                 <button class="btn btn-sm btn-outline-success me-1" onclick="triggerRun('${esc(t.name)}')"><i class="bi bi-play-fill"></i></button>
                 <button class="btn btn-sm btn-outline-danger" onclick="deleteTask('${esc(t.name)}')"><i class="bi bi-trash"></i></button>
             </td>
-        </tr>
-    `).join('');
+        </tr>`;
+    }).join('');
+    return `
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+            <div>
+                <i class="bi bi-folder2-open me-2"></i><strong>${esc(group)}</strong>
+                <span class="ms-2 badge bg-primary">system ${systemCount}</span>
+                <span class="ms-1 badge bg-secondary">user ${userCount}</span>
+            </div>
+            <div>
+                <button class="btn btn-sm btn-outline-success me-1" onclick="triggerGroup('${esc(group)}')"><i class="bi bi-play-fill"></i> 组触发</button>
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="enableGroup('${esc(group)}')"><i class="bi bi-check-circle"></i> 启用</button>
+                <button class="btn btn-sm btn-outline-warning" onclick="disableGroup('${esc(group)}')"><i class="bi bi-pause-circle"></i> 禁用</button>
+            </div>
+        </div>
+        <div class="card-body">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>名称</th><th>类型</th><th>目标表</th><th>调度</th><th>依赖 depends_on</th><th style="width:220px">操作</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        </div>
+    </div>`;
 }
 
 async function viewDetail(name) {
@@ -169,6 +185,32 @@ async function triggerRun(name) {
         const res = await apiPost(`/tasks/${encodeURIComponent(name)}/run`);
         toast(`任务执行完毕 — 新增 ${res.data.new}, 更新 ${res.data.updated}, 跳过 ${res.data.skipped}`, 'success');
     } catch(e) { toast('执行失败: ' + e.message, 'danger'); }
+}
+
+async function triggerGroup(group) {
+    if (!confirm(`确认触发分组 "${group}" 下所有根任务?`)) return;
+    try {
+        const res = await apiPost(`/tasks/groups/${encodeURIComponent(group)}/trigger`);
+        toast(res.message, 'success');
+    } catch(e) { toast('组触发失败: ' + e.message, 'danger'); }
+}
+
+async function enableGroup(group) {
+    if (!confirm(`确认启用分组 "${group}" 下所有任务?`)) return;
+    try {
+        const res = await apiPost(`/tasks/groups/${encodeURIComponent(group)}/enable`);
+        toast(res.message, 'success');
+        loadTaskList();
+    } catch(e) { toast('启用失败: ' + e.message, 'danger'); }
+}
+
+async function disableGroup(group) {
+    if (!confirm(`确认禁用分组 "${group}" 下所有任务?`)) return;
+    try {
+        const res = await apiPost(`/tasks/groups/${encodeURIComponent(group)}/disable`);
+        toast(res.message, 'success');
+        loadTaskList();
+    } catch(e) { toast('禁用失败: ' + e.message, 'danger'); }
 }
 
 async function deleteTask(name) {
@@ -188,6 +230,8 @@ function showCreateModal() {
     document.getElementById('createModalTitle').innerHTML = '<i class="bi bi-plus-circle me-2"></i>创建任务';
     document.getElementById('taskName').value = '';
     document.getElementById('taskName').disabled = false;
+    document.getElementById('taskGroup').value = '';
+    document.getElementById('taskGroup').disabled = false;
     document.getElementById('taskNameGroup').style.display = '';
     document.getElementById('loadTemplateBtn').style.display = '';
     document.getElementById('taskYaml').value = '';
@@ -200,11 +244,14 @@ async function showEditModal(name) {
     try {
         const res = await apiGet(`/tasks/${encodeURIComponent(name)}`);
         const yamlStr = res.data.config_yaml || '';
+        const group = res.data._group || res.data.group || '';
 
         _editingTaskName = name;
         document.getElementById('createModalTitle').innerHTML = '<i class="bi bi-pencil-square me-2"></i>编辑任务配置';
         document.getElementById('taskName').value = name;
         document.getElementById('taskName').disabled = true;
+        document.getElementById('taskGroup').value = group;
+        document.getElementById('taskGroup').disabled = true;
         document.getElementById('taskNameGroup').style.display = '';
         document.getElementById('loadTemplateBtn').style.display = 'none';
         document.getElementById('taskYaml').value = yamlStr;
@@ -218,6 +265,7 @@ async function submitTask() {
     const btn = document.getElementById('createBtn');
     const nameField = document.getElementById('taskName');
     const name = nameField.value.trim();
+    const group = document.getElementById('taskGroup').value.trim();
     const yaml = document.getElementById('taskYaml').value.trim();
 
     if (!name) { toast('请输入任务名称', 'warning'); return; }
@@ -232,7 +280,7 @@ async function submitTask() {
         if (isEdit) {
             res = await apiPut(`/tasks/${encodeURIComponent(_editingTaskName)}`, { name: _editingTaskName, config_yaml: yaml });
         } else {
-            res = await apiPost('/tasks', { name, config_yaml: yaml });
+            res = await apiPost('/tasks', { name, config_yaml: yaml, group });
         }
         toast(res.message, 'success');
         createModal.hide();

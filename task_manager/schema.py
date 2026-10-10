@@ -239,6 +239,11 @@ class TaskConfig(_ConfigBase):
     def trigger_type(self) -> str: return self._raw.get("trigger_type", "system")
 
     @property
+    def group(self) -> str:
+        """任务所属分组（由目录名推导；loader 注入 _group 供运行时使用）。"""
+        return self._raw.get("group", "") or self._raw.get("_group", "")
+
+    @property
     def enabled(self) -> bool: return self._raw.get("enabled", True)
 
     @property
@@ -291,6 +296,27 @@ class TaskConfig(_ConfigBase):
 
     @property
     def db(self) -> dict: return self._raw.get("db", {})
+
+    # ── 组级文件日志配置 ──
+
+    @property
+    def logging(self) -> dict:
+        """YAML 任务级 logging 配置（原始 dict）。"""
+        return self._raw.get("logging", {})
+
+    @property
+    def log_config(self) -> dict:
+        """标准化 logging 配置（应用默认值）。
+
+        默认：enabled=True, error=True, runtime=True, data=False。
+        """
+        cfg = self._raw.get("logging") or {}
+        return {
+            "enabled": bool(cfg.get("enabled", True)),
+            "data": bool(cfg.get("data", False)),
+            "runtime": bool(cfg.get("runtime", True)),
+            "error": bool(cfg.get("error", True)),
+        }
 
     # ── First output convenience ──
 

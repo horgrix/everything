@@ -17,11 +17,14 @@ CREATE TABLE IF NOT EXISTS crawl_tasks (
     target_table  TEXT NOT NULL,
     schedule      TEXT NOT NULL,
     trigger_type  TEXT NOT NULL DEFAULT 'system',
+    "group"       TEXT NOT NULL DEFAULT '',
     enabled       INTEGER NOT NULL DEFAULT 1,
     config_yaml   TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_tasks_group ON crawl_tasks("group");
 
 -- URL去重追踪表
 CREATE TABLE IF NOT EXISTS dedup_log (

@@ -14,6 +14,7 @@ import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from task_manager.loader import TaskLoader
+from crawler.task_log import TaskLogHandler, resolve_log_config
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,10 @@ class CrawlScheduler:
         asyncio.get_event_loop().run_forever()
     """
 
-    def __init__(self, config_dir: str, db, engine=None, loader=None):
+    def __init__(self, config_dir: str, db, engine=None, loader=None, log_dir: str = "logs"):
         self.config_dir = config_dir
         self.db = db
+        self._log_dir = log_dir
         self._scheduler = AsyncIOScheduler()
         self._engine = engine  # injected by create_app()
         self._loader = loader  # injected by create_app()
@@ -97,7 +99,9 @@ class CrawlScheduler:
         # 1. 注册到数据库 + 建表
         from task_manager.loader import TaskLoader
         loader = TaskLoader(self.config_dir, self.db)
-        processed = loader._register_task(task_config)
+        trigger_type = task_config.get("trigger_type", "system")
+        group = task_config.get("_group") or task_config.get("group") or "default"
+        processed = loader._register_task(task_config, trigger_type, None, group)
         if processed is None:
             logger.error("add_job 失败: 任务注册到数据库失败")
             return None
@@ -105,7 +109,9 @@ class CrawlScheduler:
         # 2. 同时写入 YAML 文件（持久化）
         import yaml
         import os
-        filepath = os.path.join(self.config_dir, f"{name}.yaml")
+        sub = "" if trigger_type == "system" else "manual"
+        filepath = os.path.join(self.config_dir, group, sub, f"{name}.yaml")
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, "w", encoding="utf-8") as f:
             yaml.dump(task_config, f, allow_unicode=True, default_flow_style=False)
         logger.info("任务配置已写入: %s", filepath)
@@ -196,6 +202,49 @@ class CrawlScheduler:
         finally:
             self._running.discard(name)
 
+    async def trigger_group(self, group: str) -> None:
+        """
+        组级触发：找该 group 下 depends_on 为空的任务逐个 _run_task，
+        靠现有 _fire_dependents 级联触发下游。
+
+        若 _tasks 尚未填充（未 start），则先从 loader 加载并填充依赖反向索引。
+        """
+        if not self._tasks:
+            loader = self._loader or TaskLoader(self.config_dir, self.db)
+            for task in loader.load_all():
+                self._tasks[task["name"]] = task
+                for upstream in (task.get("depends_on") or []):
+                    self._dependents.setdefault(upstream, []).append(task)
+
+        roots = [
+            t for t in self._tasks.values()
+            if (t.get("_group") or t.get("group") or "") == group
+            and not (t.get("depends_on") or [])
+        ]
+        if not roots:
+            logger.warning("分组 '%s' 无根任务（depends_on 为空）可触发", group)
+            return
+        logger.info("组级触发分组 '%s'，共 %d 个根任务", group, len(roots))
+        await asyncio.gather(*(self._run_task(t) for t in roots))
+
+    def _log_handler(self, task_config: dict) -> TaskLogHandler | None:
+        """按任务所属 group 构造日志 handler；无 group 时返回 None。"""
+        group = task_config.get("_group") or task_config.get("group") or ""
+        if not group:
+            return None
+        return TaskLogHandler(group, self._log_dir)
+
+    @staticmethod
+    def _runtime_summary(name: str, stats: dict, duration_ms: int, error) -> str:
+        """生成 runtime.log 摘要行。"""
+        if error:
+            return f"任务 '{name}' 失败: {error} (耗时 {duration_ms/1000:.1f}s)"
+        return (
+            f"任务 '{name}' 完成: 新增 {stats.get('new', 0)}, "
+            f"更新 {stats.get('updated', 0)}, 跳过 {stats.get('skipped', 0)}, "
+            f"耗时 {duration_ms/1000:.1f}s"
+        )
+
     async def _execute(self, task_config: dict) -> dict:
         """执行单个任务并记录运行日志，返回统计结果（含 error 字段）。"""
         name = task_config.get("name", "unknown")
@@ -207,13 +256,20 @@ class CrawlScheduler:
         # 创建运行日志（事件循环线程，SQLite 安全）
         log_id = self.db.start_crawl_log(task_id)
 
+        log_handler = self._log_handler(task_config)
+        log_cfg = resolve_log_config(task_config)
+
+        stats = None
+        error = None
+        duration_ms = 0
         try:
             stats = await self._engine.run(task_config, self.db)
             duration_ms = int((time.time() - start_time) * 1000)
 
             if stats.get("error"):
-                self.db.fail_crawl_log(log_id, stats["error"], duration_ms)
-                logger.warning("任务 '%s' 部分失败: %s", name, stats["error"])
+                error = stats["error"]
+                self.db.fail_crawl_log(log_id, error, duration_ms)
+                logger.warning("任务 '%s' 部分失败: %s", name, error)
             else:
                 self.db.finish_crawl_log(
                     log_id,
@@ -230,13 +286,27 @@ class CrawlScheduler:
                     stats.get("skipped", 0),
                     duration_ms / 1000,
                 )
-            return stats
 
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
-            self.db.fail_crawl_log(log_id, str(e), duration_ms)
+            error = str(e)
+            self.db.fail_crawl_log(log_id, error, duration_ms)
             logger.error("任务 '%s' 执行失败: %s", name, e)
-            return {"error": str(e)}
+            stats = {"error": error}
+
+        # 组级文件日志
+        if log_handler and log_cfg["enabled"]:
+            if log_cfg["runtime"]:
+                await log_handler.log_runtime(
+                    self._runtime_summary(name, stats or {}, duration_ms, error)
+                )
+            if log_cfg["error"] and error:
+                await log_handler.log_error(
+                    f"任务 '{name}' 失败: {error}",
+                    (stats or {}).get("raw_data"),
+                )
+
+        return stats
 
     def _deps_ready(self, depends_on: list, name: str) -> bool:
         """

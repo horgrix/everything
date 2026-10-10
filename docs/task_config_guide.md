@@ -1,10 +1,11 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v2.2 | 最后更新：2026-08-03
+> 版本：v2.3 | 最后更新：2026-10-09
 >
 > 对应代码版本：重构后（注册表模式 Cleaner/Parser + 统一 DataSource 抽象层 + outputs 多表架构）
 > v2.1 新增：`target_api` 批量上传（`batch_size` 分批）、HTTP 连接池复用
 > v2.2 新增：字段 `when` 条件分支（运行时动态选择解析路径）
+> v2.3 新增：任务分组（group 由目录名推导）+ 组级文件日志（logging → logs/<group>/）
 
 ---
 
@@ -22,6 +23,8 @@
   - [name](#name)
   - [type / method / url](#type--method--url)
   - [trigger_type / schedule](#trigger_type--schedule)
+  - [group — 任务分组](#group--任务分组)
+  - [logging — 组级文件日志](#logging--组级文件日志)
   - [encoding](#encoding)
   - [params](#params)
   - [headers — 请求头](#headers--请求头)
@@ -71,10 +74,18 @@
 
 ```
 config/tasks/
-├── system_trigger/     ← 定时任务，系统启动后 APScheduler 自动调度
-│   └── *.yaml
-└── user_trigger/       ← 手动任务，只能通过 API 或 --run-once 触发
-    └── *.yaml
+├── <group>/            ← 分组，目录名 = group
+│   ├── *.yaml          ← system 定时任务（组根，系统启动后 APScheduler 自动调度）
+│   ├── manual/*.yaml   ← user 手动任务（只能通过 API / --run-once / 组触发）
+│   ├── script/         ← 脚本目录（占位）
+│   └── README.md       ← 组元数据说明
+│
+├── taptap-download/
+├── taptap-ads/
+├── taptap-pc-online/
+├── steam/
+├── hk-finance/
+└── torchlight/
 ```
 
 **文件名任意**，系统只读文件内容。文件可以包含单个任务（一个 dict）或多个任务（一个 list）。
@@ -85,10 +96,10 @@ config/tasks/
 |---|---|---|
 | `trigger_type` | `system` | `user` |
 | `schedule` | **必填** | **禁止出现** |
-| 存放目录 | `system_trigger/` | `user_trigger/` |
+| 存放目录 | 组根 `<group>/` | `manual/` 子目录 |
 | 触发方式 | 按 cron 自动执行 | `POST /api/tasks/{name}/run` 或 `--run-once` |
 
-**目录与 trigger_type 必须一致**——如果 trigger_type 写了 `system` 但文件放在了 `user_trigger/` 下，系统会报错拒绝加载。
+**目录与 trigger_type 必须一致**——如果 trigger_type 写了 `system` 但文件放在了 `manual/` 下，或 trigger_type 写了 `user` 却放在组根，系统都会报错拒绝加载。`group` 由目录名推导，**不写入 YAML**。
 
 ### 数据流水线
 
@@ -129,7 +140,7 @@ URL / SDK / 文件 / 数据库
 
 ### API 任务
 
-将以下内容保存为 `config/tasks/user_trigger/hello_api.yaml`：
+将以下内容保存为 `config/tasks/demo/manual/hello_api.yaml`：
 
 ```yaml
 name: "API 快速开始"
@@ -198,7 +209,7 @@ python -c "import sqlite3; conn=sqlite3.connect('crawler.db'); conn.row_factory=
 
 ### 文件补录任务
 
-将以下内容保存为 `config/tasks/user_trigger/hello_csv.yaml`：
+将以下内容保存为 `config/tasks/demo/manual/hello_csv.yaml`：
 
 ```yaml
 name: "CSV 快速开始"
@@ -305,6 +316,62 @@ schedule: "0 8 * * *"
 trigger_type: user
 # 不能写 schedule 字段
 ```
+
+### group — 任务分组
+
+| 属性 | 说明 |
+|------|------|
+| 来源 | **目录名推导**，不在 YAML 中写 `group` 字段 |
+| 取值 | 任意目录名（如 `steam`、`hk-finance`、`taptap-ads`） |
+
+任务按「目录 = 分组」组织：`config/tasks/<group>/*.yaml`（组根）放 system 定时任务，
+`config/tasks/<group>/manual/*.yaml` 放 user 手动任务。加载时 loader 会把 `group`
+注入任务配置（`_group`），写入数据库 `crawl_tasks.group` 列，供调度、API、组级日志
+按分组聚合使用。
+
+**跨组 depends_on**：`depends_on` 引用的是任务 `name`（全局唯一），可以跨分组依赖——
+上游任务在哪个分组并不影响依赖解析。组级触发 `POST /api/tasks/groups/{group}/trigger`
+会执行该组所有 `depends_on` 为空的任务，再由 `_fire_dependents` 级联触发下游（含跨组下游）。
+
+```yaml
+# 不写 group —— group 由所在目录名自动推导
+name: "DWS_XX每日汇总任务"
+trigger_type: system
+schedule: "17 * * * *"
+depends_on: ["DWS_XX每日计算任务"]   # 跨组也可，填上游任务 name 即可
+outputs: [...]
+```
+
+### logging — 组级文件日志
+
+| 属性 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `logging.enabled` | boolean | 否 | `true` | 总开关 |
+| `logging.data` | boolean | 否 | `false` | 是否写响应 body 原文到 `data.log` |
+| `logging.runtime` | boolean | 否 | `true` | 是否写运行摘要到 `runtime.log` |
+| `logging.error` | boolean | 否 | `true` | 是否写错误信息到 `error.log` |
+
+每个任务按所属分组写 `logs/<group>/` 下的覆盖式日志文件（`open('w')` 覆盖，每次运行
+只保留最新一次结果）：
+
+| 文件 | 内容 |
+|------|------|
+| `data.log` | 响应 body 原文（绝不写 headers）；>5MB 截断并在开头写 `[TRUNCATED] 原始大小 X bytes` |
+| `runtime.log` | 任务完成/失败摘要（新增/更新/跳过/耗时 或 错误信息） |
+| `error.log` | 错误信息 + 出错的 body（若有） |
+
+```yaml
+name: "XX采集任务"
+trigger_type: system
+schedule: "0 8 * * *"
+logging:
+  enabled: true
+  data: true        # 保留最近一次响应原文，便于排查
+  runtime: true
+  error: true
+```
+
+> 大内容通过 `asyncio.to_thread` 落盘，不阻塞事件循环。
 
 ### depends_on — 任务依赖（任务链）
 

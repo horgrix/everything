@@ -196,26 +196,36 @@ pip install chardet>=7.4.3
 
 ### 任务目录结构
 
+任务按「目录名 = 分组（group）」组织，一个分组下同时放定时与手动任务：
+
 ```
 config/
-├── tasks/                        # 定时采集任务
-│   ├── hk_exchange_short_selling_daily.yaml
-│   ├── hk_stock_short_selling_daily.yaml
-│   ├── steam_peak_players_hourly.yaml
-│   └── ...
-├── offline/                      # 离线/历史数据补录任务
-│   ├── steam_peak_players_hourly_his_offline.yaml
-│   ├── hk_stock_short_selling_his_offline.yaml
-│   └── ...
+├── tasks/                        # 任务（一级子目录 = 分组 group）
+│   ├── taptap-download/          # TapTap 下载榜 / 热门游戏 / 基础信息
+│   │   ├── *.yaml                # system 定时任务（组根）
+│   │   ├── manual/*.yaml         # user 手动任务
+│   │   ├── script/               # 脚本目录（占位）
+│   │   └── README.md             # 组元数据说明
+│   ├── taptap-ads/               # TapApp / TapPC 广告采集与 DWS 计算
+│   ├── taptap-pc-online/         # TapPC 在线人数 / 热玩榜采集
+│   ├── steam/                    # Steam 游戏采集
+│   ├── hk-finance/               # 港股 / 东方财富 / 交易所采集
+│   └── torchlight/               # 火炬之光赛季明细采集
 └── data/                         # CSV/Excel 离线数据文件
     └── *.csv
 ```
 
+每个分组下：组根 `*.yaml` 为 system 定时任务（必须含 `schedule`），`manual/*.yaml` 为
+user 手动任务（禁止 `schedule`）。`group` 由目录名推导，不写入 YAML。
+
 ### 创建第一个任务
 
 ```bash
-# 以 Steam 玩家数据为例
-cp config/tasks/steam_peak_players_hourly.yaml config/tasks/my_task.yaml
+# 定时任务（trigger_type: system）放在组根目录
+cp config/tasks/steam/Steam游戏每小时峰值玩家采集任务.yaml config/tasks/steam/my_task.yaml
+
+# 手动任务（trigger_type: user）放在 manual/ 子目录
+cp config/tasks/steam/manual/Steam游戏每小时峰值玩家离线任务.yaml config/tasks/steam/manual/my_task.yaml
 ```
 
 编辑 `my_task.yaml`，修改 `url`、`target_table`、`parser.fields` 等配置项。

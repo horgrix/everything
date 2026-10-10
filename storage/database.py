@@ -105,23 +105,26 @@ class Database:
 
     def upsert_task(self, task_name: str, task_type: str, target_table: str,
                     schedule: str, config_yaml: str,
-                    trigger_type: str = "system") -> int:
+                    trigger_type: str = "system", group: str = "") -> int:
         """
         插入或更新任务定义，返回 task_id。
         """
         self._migrate_add_trigger_type()
+        self._migrate_add_group()
         sql = """
-            INSERT INTO crawl_tasks (task_name, task_type, target_table, schedule, trigger_type, config_yaml)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO crawl_tasks (task_name, task_type, target_table, schedule, trigger_type, "group", config_yaml)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(task_name) DO UPDATE SET
                 task_type   = excluded.task_type,
                 target_table = excluded.target_table,
                 schedule    = excluded.schedule,
+                trigger_type = excluded.trigger_type,
+                "group"     = excluded."group",
                 config_yaml = excluded.config_yaml,
                 updated_at  = excluded.updated_at
         """
         cur = self.conn.execute(sql, (
-            task_name, task_type, target_table, schedule, trigger_type, config_yaml
+            task_name, task_type, target_table, schedule, trigger_type, group, config_yaml
         ))
         self.conn.commit()
         # 返回 task_id：insert 用 lastrowid，update 需回查
@@ -294,6 +297,22 @@ class Database:
             if "trigger_type" not in col_names:
                 self.conn.execute(
                     "ALTER TABLE crawl_tasks ADD COLUMN trigger_type TEXT NOT NULL DEFAULT 'system'"
+                )
+                self.conn.commit()
+        except Exception:
+            pass
+
+    def _migrate_add_group(self):
+        """v1.5 迁移：为旧数据库添加 group 列"""
+        try:
+            cols = self.conn.execute("PRAGMA table_info(crawl_tasks)").fetchall()
+            col_names = {row["name"] for row in cols}
+            if "group" not in col_names:
+                self.conn.execute(
+                    "ALTER TABLE crawl_tasks ADD COLUMN \"group\" TEXT NOT NULL DEFAULT ''"
+                )
+                self.conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_tasks_group ON crawl_tasks(\"group\")"
                 )
                 self.conn.commit()
         except Exception:

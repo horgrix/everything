@@ -30,6 +30,21 @@ def get_scheduler(request: Request):
 
 
 VALID_TRIGGER_TYPES = frozenset({"system", "user"})
+DEFAULT_GROUP = "default"
+
+
+def validate_group(group: str) -> str:
+    """校验并规范化 group 名：非空、不含路径分隔符。
+
+    group 由目录名推导，创建/更新接口可显式指定；
+    空值回退到 DEFAULT_GROUP。
+    """
+    group = (group or "").strip()
+    if not group:
+        return DEFAULT_GROUP
+    if "/" in group or "\\" in group or group in (".", ".."):
+        raise HTTPException(status_code=400, detail=f"无效的 group 名: {group}")
+    return group
 
 
 def parse_task_yaml(yaml_content: str, task_name: str) -> dict:

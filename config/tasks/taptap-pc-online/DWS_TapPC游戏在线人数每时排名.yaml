@@ -1,0 +1,127 @@
+name: "DWS_TapPC游戏在线人数每时排名"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      *
+    FROM
+    (
+      SELECT
+        crawled_at,
+        app_id,
+        app_name,
+        online_players,
+        tag_1,
+        tag_2,
+        tag_3,
+        distribution_type,
+        list_type,
+        ROW_NUMBER() OVER (PARTITION BY list_type ORDER BY online_players DESC) AS list_type_rk,
+        ROW_NUMBER() OVER (PARTITION BY distribution_type ORDER BY online_players DESC) AS distribution_type_rk
+      FROM
+      (
+        SELECT
+          a.crawled_at as crawled_at,
+          a.app_id as app_id,
+          b.app_name as app_name,
+          a.online_players as online_players,
+          b.tag_1 as tag_1,
+          b.tag_2 as tag_2,
+          b.tag_3 as tag_3,
+          b.distribution_type as distribution_type,
+          b.list_type as list_type
+        FROM(
+          SELECT 
+            crawled_at,
+            app_id,
+            online_players
+          FROM
+            taptap_pc_online_players
+          WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        ) a
+        INNER JOIN 
+        (
+          SELECT
+              app_id,
+              app_name,
+              tag_1,
+              tag_2,
+              tag_3,
+              distribution_type,
+              list_type
+            FROM
+              taptap_online_peak_players_ids_weekly
+            WHERE 
+              crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
+        ) b
+        ON
+        a.app_id = b.app_id
+      ) c
+    ) d
+trigger_type: system
+schedule: "14 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_pc_online_peak_players_rank_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: distribution_type
+          type: INTEGER
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: list_type
+          type: TEXT
+        - name: online_players
+          type: INTEGER
+        - name: list_type_rk
+          type: INTEGER
+        - name: distribution_type_rk
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_pc_online_peak_players_rank_hourly
+          columns: [crawled_at, list_type, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: distribution_type
+          source: distribution_type
+          to_number: true  
+        - name: tag_1
+          source: tag_1
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: app_id
+          source: app_id
+          to_number: true    
+        - name: app_name
+          source: app_name
+        - name: list_type
+          source: list_type
+        - name: online_players
+          source: online_players
+          to_number: true      
+        - name: list_type_rk
+          source: list_type_rk
+          to_number: true  
+        - name: distribution_type_rk
+          source: distribution_type_rk
+          to_number: true     
+        - name: crawled_at
+          source: crawled_at

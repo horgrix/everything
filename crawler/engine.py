@@ -13,6 +13,7 @@ from .dedup import URLDedup
 from .pipeline import DataPipeline, PipelineResult
 from .template import URLTemplate
 from .sources.base import SourceRegistry
+from .task_log import TaskLogHandler, resolve_log_config
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,12 @@ class CrawlerEngine:
         stats = await engine.run(task_config, db)
     """
 
-    def __init__(self, sources: SourceRegistry = None, pipeline: DataPipeline = None):
+    def __init__(self, sources: SourceRegistry = None, pipeline: DataPipeline = None,
+                 log_dir: str = "logs"):
         self._sources = sources or SourceRegistry()
         self._pipeline = pipeline or DataPipeline()
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
+        self._log_dir = log_dir
 
     async def close(self) -> None:
         """关闭所有数据源持有的资源（如 HTTP 连接池）。"""
@@ -81,6 +84,8 @@ class CrawlerEngine:
         outputs = self._resolve_outputs(task_config)
         collected_rows = [[] for _ in outputs]
 
+        last_raw_data = None  # 最近一次成功 fetch 的 raw_data（供失败时写 error.log）
+
         for idx, ctx in enumerate(contexts):
             # 每个 iterate 请求之间的固定间隔（批内），用于限流 / 避免被限制访问
             if idx > 0 and request_interval > 0:
@@ -116,6 +121,11 @@ class CrawlerEngine:
             if raw_data is None:
                 continue
 
+            last_raw_data = raw_data
+
+            # 组级文件日志：成功后写 data.log（仅 logging.data 开启时）
+            await self._log_data(task_config, raw_data)
+
             # 2. Expand outputs + process each via pipeline（批量模式累积 rows）
             for oi, output_config in enumerate(outputs):
                 total += self._pipeline.process(
@@ -142,7 +152,17 @@ class CrawlerEngine:
             "api_sent": total.api_sent,
             "api_failed": total.api_failed,
             "error": error_msg,
+            **({"raw_data": last_raw_data} if error_msg else {}),
         }
+
+    async def _log_data(self, task_config: dict, raw_data) -> None:
+        """组级文件日志：成功后写 data.log（开关开时才写）。"""
+        group = task_config.get("_group") or task_config.get("group") or ""
+        cfg = resolve_log_config(task_config)
+        if not group or not cfg["enabled"] or not cfg["data"]:
+            return
+        handler = TaskLogHandler(group, self._log_dir)
+        await handler.log_data(task_config.get("name", ""), raw_data)
 
     # ================================================================
     # Context expansion: iterate (Cartesian product of N variables)

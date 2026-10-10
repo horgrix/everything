@@ -1,6 +1,6 @@
-"""查询 crawler.db 中 taptap_pc_sell_ids_daily 表里 crawled_at
+"""查询 crawler.db 中 taptap_pc_hot_list_ids_hourly 表里 crawled_at
 等于当前小时（本地时间）的数据，对 app_id 去重后按升序返回，并写回
-config/tasks/user_trigger/TapPC热卖榜游戏售卖数采集任务.yaml
+config/tasks/user_trigger/TaptapPC热门游戏统计数据采集任务New.yaml
 中 iterate 下 var_name == app_id 的 values 字段，保存到原文件。
 """
 import sqlite3
@@ -9,12 +9,12 @@ from pathlib import Path
 
 import yaml
 
-# 脚本位于 cindy/TapPC在线人数抓取任务/ 下，向上两级即项目根目录，
+# 脚本位于 config/tasks/taptap-download/script/ 下，向上四级即项目根目录，
 # 这样无论从哪个目录运行本脚本，都能定位到 crawler.db 和 YAML 配置。
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DB_PATH = PROJECT_ROOT / "crawler.db"
-TABLE = "taptap_pc_sell_ids_daily"
-YAML_PATH = PROJECT_ROOT / "config/tasks/user_trigger/TapPC热卖榜游戏售卖数采集任务.yaml"
+TABLE = "taptap_pc_hot_list_ids_hourly"
+YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-download/manual/TapPC热门游戏下载数据爬取任务.yaml"
 VAR_NAME = "app_id"
 
 

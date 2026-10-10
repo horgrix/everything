@@ -86,13 +86,25 @@ async def run_once(task_name: str, config_dir: str, db_path: str):
     task_id = target["_task_id"]
     log_id = app.db.start_crawl_log(task_id)
 
+    # 组级文件日志
+    from crawler.task_log import TaskLogHandler, resolve_log_config
+    group = target.get("_group") or ""
+    log_handler = TaskLogHandler(group, "logs") if group else None
+    log_cfg = resolve_log_config(target)
+
     import time
     start = time.time()
-    stats = await app.engine.run(target, app.db)
+    error = None
+    try:
+        stats = await app.engine.run(target, app.db)
+    except Exception as e:
+        stats = {"error": str(e)}
+        error = str(e)
     duration_ms = int((time.time() - start) * 1000)
 
     if stats.get("error"):
-        app.db.fail_crawl_log(log_id, stats["error"], duration_ms)
+        error = stats["error"]
+        app.db.fail_crawl_log(log_id, error, duration_ms)
     else:
         app.db.finish_crawl_log(
             log_id,
@@ -101,6 +113,22 @@ async def run_once(task_name: str, config_dir: str, db_path: str):
             records_skipped=stats.get("skipped", 0),
             duration_ms=duration_ms,
         )
+
+    if log_handler and log_cfg["enabled"]:
+        if log_cfg["runtime"]:
+            if error:
+                summary = f"任务 '{task_name}' 失败: {error} (耗时 {duration_ms/1000:.1f}s)"
+            else:
+                summary = (
+                    f"任务 '{task_name}' 完成: 新增 {stats.get('new', 0)}, "
+                    f"更新 {stats.get('updated', 0)}, 跳过 {stats.get('skipped', 0)}, "
+                    f"耗时 {duration_ms/1000:.1f}s"
+                )
+            await log_handler.log_runtime(summary)
+        if log_cfg["error"] and error:
+            await log_handler.log_error(
+                f"任务 '{task_name}' 失败: {error}", stats.get("raw_data")
+            )
 
     print(f"\n任务 '{task_name}' 执行结果:")
     print(f"  新增: {stats.get('new', 0)}")

@@ -1,0 +1,143 @@
+name: "DWS_TapPC游戏在线人数每时汇总"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      COUNT(*) AS stat_game_cnt, 
+      SUM(online_players) AS online_players,
+      SUM(CASE WHEN list_type = "pc_emulator_played" THEN 1 ELSE 0 END) as stat_pc_emulator_game_cnt,
+      SUM(CASE WHEN list_type = "pc_emulator_played" THEN online_players ELSE 0 END) as pc_emulator_online_players,
+      SUM(CASE WHEN list_type = "pc_played" THEN 1 ELSE 0 END) as stat_pc_game_cnt,
+      SUM(CASE WHEN list_type = "pc_played" THEN online_players ELSE 0 END) as pc_online_players,
+      SUM(CASE WHEN list_type = "app_hot_creative" THEN 1 ELSE 0 END) as stat_creative_game_cnt,
+      SUM(CASE WHEN list_type = "app_hot_creative" THEN online_players ELSE 0 END) as creative_online_players,
+      SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as stat_creative_non_game_cnt,
+      SUM(CASE WHEN distribution_type = 1 THEN online_players ELSE 0 END) as creative_non_online_players,
+      SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as stat_creative_mk_game_cnt,
+      SUM(CASE WHEN distribution_type = 2 THEN online_players ELSE 0 END) as creative_mk_online_players
+    FROM(
+      SELECT
+        a.crawled_at,
+        a.online_players,
+        b.list_type,
+        b.distribution_type
+      FROM
+      (
+        SELECT
+          app_id,
+          online_players,
+          crawled_at
+        FROM
+          taptap_pc_online_players
+        WHERE 
+          crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+      ) a
+      INNER JOIN
+      (
+        SELECT
+          app_id,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          distribution_type,
+          list_type
+        FROM
+          taptap_online_peak_players_ids_weekly
+        WHERE 
+          crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
+      ) b
+      ON a.app_id = b.app_id
+    ) c
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "15 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_pc_online_peak_players_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: stat_game_cnt
+          type: INTEGER
+        - name: online_players
+          type: INTEGER
+        - name: stat_pc_emulator_game_cnt
+          type: INTEGER
+        - name: pc_emulator_online_players
+          type: INTEGER
+        - name: stat_pc_game_cnt
+          type: INTEGER
+        - name: pc_online_players
+          type: INTEGER
+        - name: stat_creative_game_cnt
+          type: INTEGER
+        - name: creative_online_players
+          type: INTEGER
+        - name: stat_creative_non_game_cnt
+          type: INTEGER
+        - name: creative_non_online_players
+          type: INTEGER
+        - name: stat_creative_mk_game_cnt
+          type: INTEGER
+        - name: creative_mk_online_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_pc_online_peak_players_hourly_crawled_at
+          columns: [crawled_at]
+          unique: true
+        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_online_players
+          columns: [online_players]
+        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_pc_emulator_online_players
+          columns: [pc_emulator_online_players]
+        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_pc_online_players
+          columns: [pc_online_players]
+        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_creative_online_players
+          columns: [creative_online_players]
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: stat_game_cnt
+          source: stat_game_cnt
+          to_number: true
+        - name: online_players
+          source: online_players
+          to_number: true
+        - name: stat_pc_emulator_game_cnt
+          source: stat_pc_emulator_game_cnt
+          to_number: true
+        - name: pc_emulator_online_players
+          source: pc_emulator_online_players
+          to_number: true 
+        - name: stat_pc_game_cnt
+          source: stat_pc_game_cnt
+          to_number: true
+        - name: pc_online_players
+          source: pc_online_players
+          to_number: true 
+        - name: stat_creative_game_cnt
+          source: stat_creative_game_cnt
+          to_number: true
+        - name: creative_online_players
+          source: creative_online_players
+          to_number: true 
+        - name: stat_creative_non_game_cnt
+          source: stat_creative_non_game_cnt
+          to_number: true
+        - name: creative_non_online_players
+          source: creative_non_online_players
+          to_number: true 
+        - name: stat_creative_mk_game_cnt
+          source: stat_creative_mk_game_cnt
+          to_number: true
+        - name: creative_mk_online_players
+          source: creative_mk_online_players
+          to_number: true    
+        - name: crawled_at
+          source: crawled_at
