@@ -13,7 +13,10 @@ db:
       SUM(ios_views) AS ios_views,
       SUM(ad_views) AS ad_views,
       SUM(android_ad_views) AS android_ad_views,
-      SUM(ios_ad_views) AS ios_ad_views
+      SUM(ios_ad_views) AS ios_ad_views,
+      SUM(pcebid_views) AS pcebid_views,
+      SUM(android_pcebid_views) AS android_pcebid_views,
+      SUM(ios_pcebid_views) AS ios_pcebid_views
     FROM 
       dws_taptap_app_landing_ad_daily
     WHERE
@@ -37,6 +40,12 @@ outputs:
         - name: android_ad_views
           type: INTEGER
         - name: ios_ad_views
+          type: INTEGER
+        - name: pcebid_views
+          type: INTEGER
+        - name: android_pcebid_views
+          type: INTEGER
+        - name: ios_pcebid_views
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
@@ -64,6 +73,15 @@ outputs:
           to_number: true 
         - name: ios_ad_views
           source: ios_ad_views
+          to_number: true  
+        - name: pcebid_views
+          source: pcebid_views
+          to_number: true 
+        - name: android_pcebid_views
+          source: android_pcebid_views
+          to_number: true 
+        - name: ios_pcebid_views
+          source: ios_pcebid_views
           to_number: true      
         - name: crawled_at
           source: crawled_at

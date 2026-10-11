@@ -9,25 +9,30 @@ db:
     SELECT
       crawled_at,
       SUM(total_views) as total_views,
-      SUM(CASE WHEN platform = "android" THEN total_views ELSE 0 END) android_views,
-      SUM(CASE WHEN platform = "ios" THEN total_views ELSE 0 END) ios_views,
+      SUM(CASE WHEN platform = 'android' THEN total_views ELSE 0 END) android_views,
+      SUM(CASE WHEN platform = 'ios' THEN total_views ELSE 0 END) ios_views,
       SUM(ad_views) as ad_views,
-      SUM(CASE WHEN platform = "android" THEN ad_views ELSE 0 END) android_ad_views,
-      SUM(CASE WHEN platform = "ios" THEN ad_views ELSE 0 END) ios_ad_views
+      SUM(CASE WHEN platform = 'android' THEN ad_views ELSE 0 END) android_ad_views,
+      SUM(CASE WHEN platform = 'ios' THEN ad_views ELSE 0 END) ios_ad_views,
+      SUM(pcebid_views) as pcebid_views,
+      SUM(CASE WHEN platform = 'android' THEN pcebid_views ELSE 0 END) android_pcebid_views,
+      SUM(CASE WHEN platform = 'ios' THEN pcebid_views ELSE 0 END) ios_pcebid_views
     FROM(
       SELECT 
-        "android" as platform,
+        'android' as platform,
         COUNT(*) AS total_views,
-        SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+        SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_views,
+        SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
         crawled_at
       FROM taptap_app_android_landing_ad_hourly
       WHERE substr(crawled_at, 1, 10) = '{today}'
       GROUP BY crawled_at
       UNION ALL
       SELECT 
-        "ios" as platform,
+        'ios' as platform,
         COUNT(*) AS total_views,
-        SUM(CASE WHEN is_ad = "True" THEN 1 ELSE 0 END) AS ad_views,
+        SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_views,
+        SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
         crawled_at
       FROM taptap_app_ios_landing_ad_hourly
       WHERE substr(crawled_at, 1, 10) = '{today}'
@@ -50,6 +55,12 @@ outputs:
         - name: android_ad_views
           type: INTEGER
         - name: ios_ad_views
+          type: INTEGER
+        - name: pcebid_views
+          type: INTEGER
+        - name: android_pcebid_views
+          type: INTEGER
+        - name: ios_pcebid_views
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
@@ -77,6 +88,15 @@ outputs:
           to_number: true 
         - name: ios_ad_views
           source: ios_ad_views
+          to_number: true 
+        - name: pcebid_views
+          source: pcebid_views
+          to_number: true 
+        - name: android_pcebid_views
+          source: android_pcebid_views
+          to_number: true 
+        - name: ios_pcebid_views
+          source: ios_pcebid_views
           to_number: true      
         - name: crawled_at
           source: crawled_at
