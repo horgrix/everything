@@ -28,7 +28,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       indexes:
-        - name: idx_uk_steam_id_stat_ts
+        - name: idx_uk_team_player_review_recent
           columns: [steam_id, stat_ts]
           unique: true
     parser:
@@ -61,7 +61,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       indexes:
-        - name: idx_uk_steam_id_stat_ts
+        - name: idx_uk_steam_player_review_rollup
           columns: [steam_id, stat_ts]
           unique: true
     parser:
