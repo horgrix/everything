@@ -20,6 +20,7 @@ db:
       MAX(tappc_online_players) as tappc_peak_players,
       AVG(tappc_online_players) as tappc_avg_players
     FROM dws_games_torchlight_online_players_daily
+    WHERE substr(crawled_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
     GROUP BY app_name, substr(crawled_at, 1, 7)
 trigger_type: system
 schedule: "42 * * * *"
@@ -55,7 +56,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_games_torchlight_online_players
+        - name: idx_uk_dws_games_torchlight_online_players_monthly
           columns: [crawled_at, app_name]
           unique: true
     parser:

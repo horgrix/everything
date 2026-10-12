@@ -8,7 +8,13 @@ db:
   query: >
     SELECT 
       app_name,
-      CASE WHEN crawled_at >= '2026-10-16 10' THEN 14 ELSE 13 END AS ss, 
+      CASE
+        WHEN crawled_at >= '2026-10-16 10' THEN 14
+        WHEN crawled_at >= '2026-07-17 10' THEN 13
+        WHEN crawled_at >= '2026-04-17 10' THEN 12
+        WHEN crawled_at >= '2026-01-16 10' THEN 11
+        ELSE 10
+      END AS ss
       CAST(julianday(crawled_at || '00:00:00') - julianday('2027-01-15 10' || ':00:00') AS INTEGER) + 1 AS ss_day,
       peak_players,
       avg_players,
@@ -21,7 +27,6 @@ db:
       tappc_peak_players,
       tappc_avg_players
     FROM dws_games_torchlight_online_players_daily
-    GROUP BY app_name, ss, ss_day
 trigger_type: system
 schedule: "43 * * * *"
 outputs:
@@ -60,7 +65,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       indexes:
-        - name: idx_uk_steam_id_ss_ss_day
+        - name: idx_uk_dws_games_torchlight_season_online_players
           columns: [app_name, ss, ss_day]
           unique: true
     parser:
