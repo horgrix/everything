@@ -21,7 +21,7 @@ db:
         peak_players as online_players,
         strftime('%Y-%m-%d %H', stat_ts / 1000, 'unixepoch', 'localtime') as crawled_at
       FROM steam_game_peak_players_hourly 
-      WHERE strftime('%Y', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y', 'now', 'localtime')
+      WHERE strftime('%Y-%m-%d', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime')
       AND steam_id in (1974050, 2315040)
       AND CAST(strftime('%H', datetime(stat_ts / 1000, 'unixepoch', 'localtime')) AS INTEGER) % 2 = 0
       UNION ALL
@@ -32,7 +32,7 @@ db:
         crawled_at as crawled_at
       FROM dws_taptap_pc_online_peak_players_rank_hourly
       WHERE app_id = 172664
-      AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+      AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
     ) as a
     GROUP BY crawled_at
 trigger_type: system
