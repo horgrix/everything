@@ -15,7 +15,13 @@ db:
         WHEN crawled_at >= '2026-01-16 10' THEN 11
         ELSE 10
       END AS ss,
-      CAST(julianday(crawled_at || '00:00:00') - julianday('2027-01-15 10' || ':00:00') AS INTEGER) + 1 AS ss_day,
+      CASE
+        WHEN crawled_at >= '2026-10-16 10' THEN CAST(julianday('2027-01-15 09' || ':00:00') - julianday(crawled_at || '00:00:00') AS INTEGER) + 1
+        WHEN crawled_at >= '2026-07-17 10' THEN CAST(julianday('2027-10-16 09' || ':00:00') - julianday(crawled_at || '00:00:00') AS INTEGER) + 1
+        WHEN crawled_at >= '2026-04-17 10' THEN CAST(julianday('2027-07-17 09' || ':00:00') - julianday(crawled_at || '00:00:00') AS INTEGER) + 1
+        WHEN crawled_at >= '2026-01-16 10' THEN CAST(julianday('2027-04-17 09' || ':00:00') - julianday(crawled_at || '00:00:00') AS INTEGER) + 1
+        ELSE 0
+      END AS ss_day,
       peak_players,
       avg_players,
       steam_peak_players,
