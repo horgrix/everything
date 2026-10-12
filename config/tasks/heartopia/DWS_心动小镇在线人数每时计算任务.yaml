@@ -17,7 +17,7 @@ db:
         peak_players as online_players,
         strftime('%Y-%m-%d %H', stat_ts / 1000, 'unixepoch', 'localtime') as crawled_at
       FROM steam_game_peak_players_hourly 
-      WHERE strftime('%Y', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y', 'now', 'localtime')
+      WHERE strftime('%Y-%m-%d', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime')
       AND steam_id in (4025700)
       AND CAST(strftime('%H', datetime(stat_ts / 1000, 'unixepoch', 'localtime')) AS INTEGER) % 2 = 0
       UNION ALL
