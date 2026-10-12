@@ -34,7 +34,7 @@ db:
 trigger_type: system
 schedule: "41 * * * *"
 outputs:
-  - target_table: "dws_games_heartopia‌_online_players_hourly"
+  - target_table: "dws_games_heartopia_online_players_hourly"
     table_schema:
       columns:
         - name: id
@@ -51,7 +51,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_games_heartopia‌_online_players_hourly
+        - name: idx_uk_dws_games_heartopia_online_players_hourly
           columns: [app_name, crawled_at]
           unique: true
     parser:
