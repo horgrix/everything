@@ -67,12 +67,6 @@ outputs:
       fields:
         - name: app_name
           source: app_name
-        - name: ss
-          source: ss
-          to_number: true     
-        - name: ss_day
-          source: ss_day
-          to_number: true
         - name: online_players
           source: online_players
           to_number: true
