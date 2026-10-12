@@ -41,6 +41,7 @@ RULES = [
     ("dws_taptap_download_daily", "%Y-%m-%d", "-36 days"),
     ("dws_taptap_download_monthly", "%Y-%m", "-24 months"),
 
+    ("dws_taptap_pc_online_peak_players_rank_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("steam_game_peak_players_hourly", "%Y-%m-%d %H", "-900 hours"),
 ]
 
