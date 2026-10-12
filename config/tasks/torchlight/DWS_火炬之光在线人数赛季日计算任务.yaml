@@ -1,4 +1,4 @@
-name: "DWS_火炬之光赛季在线人数每日计算任务"
+name: "DWS_火炬之光在线人数赛季日计算任务"
 depends_on:
   - "DWS_火炬之光在线人数每天计算任务"
 type: db
@@ -14,7 +14,7 @@ db:
         WHEN crawled_at >= '2026-04-17 10' THEN 12
         WHEN crawled_at >= '2026-01-16 10' THEN 11
         ELSE 10
-      END AS ss
+      END AS ss,
       CAST(julianday(crawled_at || '00:00:00') - julianday('2027-01-15 10' || ':00:00') AS INTEGER) + 1 AS ss_day,
       peak_players,
       avg_players,

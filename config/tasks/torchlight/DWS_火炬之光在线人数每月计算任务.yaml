@@ -9,16 +9,16 @@ db:
     SELECT 
       substr(crawled_at, 1, 10) AS crawled_at,
       app_name, 
-      MAX(online_players) as peak_players,
-      AVG(online_players) as avg_players,
-      MAX(steam_online_players) as steam_peak_players,
-      AVG(steam_online_players) as steam_avg_players,
-      MAX(steam_1974050_online_players) as steam_1974050_peak_players,
-      AVG(steam_1974050_online_players) as steam_1974050_avg_players,
-      MAX(steam_2315040_online_players) as steam_2315040_peak_players,
-      AVG(steam_2315040_online_players) as steam_2315040_avg_players,
-      MAX(tappc_online_players) as tappc_peak_players,
-      AVG(tappc_online_players) as tappc_avg_players
+      MAX(peak_players) as peak_players,
+      AVG(avg_players) as avg_players,
+      MAX(steam_peak_players) as steam_peak_players,
+      AVG(steam_avg_players) as steam_avg_players,
+      MAX(steam_1974050_peak_players) as steam_1974050_peak_players,
+      AVG(steam_1974050_avg_players) as steam_1974050_avg_players,
+      MAX(steam_2315040_peak_players) as steam_2315040_peak_players,
+      AVG(steam_2315040_avg_players) as steam_2315040_avg_players,
+      MAX(tappc_peak_players) as tappc_peak_players,
+      AVG(tappc_avg_players) as tappc_avg_players
     FROM dws_games_torchlight_online_players_daily
     WHERE substr(crawled_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
     GROUP BY app_name, substr(crawled_at, 1, 7)
