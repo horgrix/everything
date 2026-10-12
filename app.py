@@ -16,6 +16,7 @@ from crawler.pipeline import DataPipeline
 from crawler.parser import Parser
 from crawler.cleaner import Cleaner
 from crawler.sources import create_default_registry, SourceRegistry
+from crawler.sinks import create_default_sink_registry
 from scheduler.scheduler import CrawlScheduler
 from task_manager.loader import TaskLoader
 
@@ -62,7 +63,9 @@ def create_app(
     logger.info("Data sources: %s", sources.get_all_types())
 
     # Processing
-    pipeline = DataPipeline(parser=Parser(), cleaner=Cleaner())
+    sinks = create_default_sink_registry()
+    logger.info("Output sinks: %s", sorted(sinks.keys()))
+    pipeline = DataPipeline(parser=Parser(), cleaner=Cleaner(), sinks=sinks)
 
     # Engine
     engine = CrawlerEngine(sources=sources, pipeline=pipeline)

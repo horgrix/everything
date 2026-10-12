@@ -555,6 +555,8 @@ python main.py --api --db my_data.db --config my_tasks/
 | 动态参数 | 见文档 | `{today}`, `{yesterday}`, `{days_ago:N}`, `{timestamp}`, `{timestamp_ms}` |
 | 多值迭代 | 见文档 | `iterate: [{var_name, values}]` 支持多变量笛卡尔积 |
 | 多表输出 | 见文档 | `outputs: [{target_table, table_schema, parser}]` |
+| 远程 MySQL 输出 | 见文档 | `outputs: [{target_mysql, mysql: {host, port, user, password, database}, table_schema, parser}]`（原生 MySQL 方言，不做类型转换）|
+| 文件输出 | 见文档 | `outputs: [{target_file: {path, format, mode}, parser}]`（csv/jsonl/json/excel，path 支持模板变量）|
 | 表结构 | 见文档 | `table_schema: {columns: [{name, type, constraint}], indexes: [{name, columns, unique}]}` |
 | JSON 解析 | 见文档 | `parser.type: json` + `root_path` + `fields[].path` |
 | JSON 二维数组 | 见文档 | `array_index_mapping: true` + `fields[].position` |

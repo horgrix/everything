@@ -1,6 +1,26 @@
 # 爬虫系统变更日志
 
-> 版本：v1.5 | 更新日期：2026-10-09
+> 版本：v1.6 | 更新日期：2026-10-11
+
+---
+
+## v1.6 可插拔 OutputSink + 远程 MySQL / 文件输出（2026-10-11 新增）
+
+### OutputSink 输出架构
+
+- 新增 `crawler/sinks/` 包（与 `crawler/sources/` 对称）：`OutputSink` 抽象 + `SinkRegistry` + `SinkResult`，各 sink 认领一个 `output` 配置键。
+- 4 个内置 sink：`SqliteSink`（`target_table`）、`ApiSink`（`target_api`）、`MysqlSink`（`target_mysql`）、`FileSink`（`target_file`）；`create_default_sink_registry()` 构造注册表。
+- `DataPipeline.process()` 改为遍历注册表分发（先 `prepare` 再 `write`），新增 `flush_outputs()` 收尾；一个 output 可同时命中多个 sink。
+- 批处理下沉到 sink 内部：`ApiSink` / `MysqlSink` 自持缓冲，按自身 `batch_size` flush；`engine` 删除 `collected_rows` / `_flush_output_api` 等 target_api 专属批处理。
+
+### 新增输出目标
+
+- `target_mysql`：写入远程 MySQL。**不做任何 SQL 方言映射**，`table_schema.columns` 的 `type`/`constraint` 由用户按原生 MySQL 方言书写并原样拼进 `CREATE TABLE`；`password` 支持 `${ENV_VAR}`；写入用 `INSERT ... ON DUPLICATE KEY UPDATE`（排除主键/自增列）。每个 output 自带 `mysql` 连接块。
+- `target_file`：导出 CSV / JSONL / JSON / Excel，`path` 支持 `{today}` 等模板变量，`mode` 支持 `overwrite` / `append`。
+- 约束：一个 output 只能挂一个 SQL sink（`target_table` 或 `target_mysql`）；`target_api` / `target_file` 可与 SQL sink 共存。
+- `task_manager/loader.py` 的 output 校验从「必须有 target_table 或 target_api」改为「至少命中一个已注册 sink 的 key」。
+
+**受影响文件**：`crawler/sinks/`（新增 base/sqlite_sink/api_sink/mysql_sink/file_sink/__init__）、`crawler/pipeline.py`、`crawler/engine.py`、`task_manager/loader.py`、`app.py`、`api/routes/tasks.py`、`docs/task_config_guide.md`、`README.md`、`tests/test_sinks.py`（新增）、`tests/test_mysql_sink.py`（新增）、`tests/test_file_sink.py`（新增）
 
 ---
 

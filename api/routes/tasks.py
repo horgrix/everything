@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
 from pydantic import BaseModel
 from crawler.engine import CrawlerEngine
+from crawler.sinks import create_default_sink_registry
 from task_manager.loader import TaskLoader
 
 logger = logging.getLogger(__name__)
@@ -60,17 +61,27 @@ def _find_task_file(config_dir: str, task_name: str):
     return None, None, None
 
 
+def _output_targets(outputs: list[dict]) -> list[str]:
+    """Collect display names for every output (table / remote table / file)."""
+    targets = []
+    for output in outputs:
+        if output.get("target_table"):
+            targets.append(output["target_table"])
+        elif output.get("target_mysql"):
+            targets.append(output["target_mysql"])
+        elif output.get("target_file"):
+            target_file = output.get("target_file") or {}
+            targets.append(target_file.get("path", "target_file"))
+    return targets
+
+
 @router.get("")
 async def list_tasks(request: Request):
     """List all tasks."""
     tasks = _load_tasks(request)
     result = []
     for t in tasks:
-        output_tables = [
-            o.get("target_table", "")
-            for o in t.get("outputs", [])
-            if o.get("target_table")
-        ]
+        output_tables = _output_targets(t.get("outputs", []))
         result.append({
             "name": t.get("name"),
             "type": t.get("type"),
@@ -166,7 +177,10 @@ async def trigger_run(request: Request, task_name: str):
         engine = scheduler._engine
     else:
         from crawler.sources import create_default_registry
-        engine = CrawlerEngine(sources=create_default_registry())
+        engine = CrawlerEngine(
+            sources=create_default_registry(),
+            sinks=create_default_sink_registry(),
+        )
 
     try:
         stats = await engine.run(target, db)
@@ -282,7 +296,7 @@ async def update_task(request: Request, task_name: str, body: CreateTaskRequest)
             "schedule": processed.get("schedule"),
             "trigger_type": trigger_type,
             "group": group,
-            "target_table": processed.get("target_table"),
+            "target_table": getattr(processed, "target_table", None),
         },
     }
 
@@ -328,7 +342,7 @@ async def create_task(request: Request, body: CreateTaskRequest):
             "schedule": processed.get("schedule"),
             "trigger_type": trigger_type,
             "group": group,
-            "target_table": processed.get("target_table"),
+            "target_table": getattr(processed, "target_table", None),
         },
     }
 

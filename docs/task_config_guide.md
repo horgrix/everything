@@ -31,6 +31,10 @@
 - [四、outputs — 输出目标](#四outputs--输出目标)
   - [单表输出](#单表输出)
   - [多表输出（从一次请求拆出多张表）](#多表输出从一次请求拆出多张表)
+  - [API 输出（target_api）](#api-输出target_api)
+  - [远程 MySQL 输出（target_mysql）](#远程-mysql-输出target_mysql)
+  - [文件输出（target_file）](#文件输出target_file)
+  - [输出架构（OutputSink）](#输出架构outputsink)
 - [五、table_schema — 表结构定义](#五table_schema--表结构定义)
   - [columns](#columns)
   - [indexes](#indexes)
@@ -598,6 +602,87 @@ outputs:
 > 变量（如 `{app_id}`）；引用时间类变量（`{today}`、`{now}` 等）没有问题。
 
 > 上传失败仅记日志并计入统计（`api_failed`），不会中断任务。
+
+### 远程 MySQL 输出（target_mysql）
+
+除本地 SQLite 库 `target_table` 外，output 还可写入远程 MySQL。连接参数放在
+**同一个 output** 的 `mysql` 块内（不做任务级共享）：
+
+```yaml
+outputs:
+  - target_mysql: "remote_apps"
+    mysql:
+      host: "db.example.com"
+      port: 3306
+      user: "crawler"
+      password: "${MYSQL_PASSWORD}"   # 支持 ${ENV_VAR} 环境变量替换
+      database: "analytics"
+      charset: "utf8mb4"
+      batch_size: 500                 # 可选；0/不填 = 循环结束一次性写入
+    table_schema:                     # 原生 MySQL 方言，系统原样拼进 CREATE TABLE
+      columns:
+        - name: id
+          type: BIGINT
+          constraint: AUTO_INCREMENT PRIMARY KEY
+        - name: app_id
+          type: BIGINT
+        - name: name
+          type: VARCHAR(255)
+      indexes:
+        - name: idx_remote_apps_app_id
+          columns: [app_id]
+          unique: true
+    parser: {...}
+```
+
+- **不做任何 SQL 方言转换**：`type` / `constraint` 按目标库原生方言书写，系统原样拼进
+  `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX`。SQLite 任务不能直接复用为 MySQL 任务，
+  需各自书写 `table_schema`。
+- `password` 支持 `${ENV_VAR}`（从环境变量读取）。
+- 写入使用 `INSERT ... ON DUPLICATE KEY UPDATE`，自动排除主键 / `AUTO_INCREMENT` 列；
+  若所有列均为主键，则退化为 `INSERT IGNORE`。
+- **一个 output 只能挂一个 SQL sink**（`target_table` 或 `target_mysql` 二选一）；
+  若需同时写本地与远端，请写两个 output，各自带自己方言的 `table_schema`。
+- `target_api` / `target_file` 可与 SQL sink 共存于同一个 output。
+
+### 文件输出（target_file）
+
+把清洗后的数据导出为本地文件（CSV / JSONL / JSON / Excel），不写数据库：
+
+```yaml
+outputs:
+  - target_file:
+      path: "output/apps_{today}.csv"   # 支持 {today}/{now}/{timestamp} 等模板变量
+      format: csv                        # csv | jsonl | json | excel
+      mode: overwrite                    # overwrite | append
+    parser: {...}
+```
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| `path` | string | 是 | — | 输出路径，支持模板变量，目录会自动创建 |
+| `format` | string | 否 | `csv` | `csv` / `jsonl` / `json` / `excel` |
+| `mode` | string | 否 | `overwrite` | `overwrite` 每次运行覆盖；`append` 追加 |
+
+- CSV 使用 UTF-8-SIG（带 BOM，Excel 直接打开不乱码）；Excel 需要 `openpyxl`。
+- 行数据在任务循环结束后统一写入（`flush`），因此 `overwrite` 每次运行只生成一个完整文件。
+- 文件属于「非数据库外部目标」，写入行数计入 `api_sent`（外部输出行数），不计入 `new`。
+
+### 输出架构（OutputSink）
+
+输出目标通过 `crawler/sinks/` 的可插拔 `OutputSink` + `SinkRegistry` 实现，与
+`crawler/sources/` 对称。每个 sink 认领一个 `output` 配置键：
+
+| 配置键 | Sink | 目标 |
+|--------|------|------|
+| `target_table` | `SqliteSink` | 本地 SQLite 业务表 |
+| `target_api` | `ApiSink` | 远程 HTTP 接口（自持 `batch_size` 缓冲）|
+| `target_mysql` | `MysqlSink` | 远程 MySQL 表（自持 `batch_size` 缓冲）|
+| `target_file` | `FileSink` | 本地 CSV / JSONL / JSON / Excel |
+
+`DataPipeline.process()` 遍历注册表：命中哪个键就调用哪个 sink（一个 output 可同时命中多个
+sink，例如 `target_table` + `target_api` + `target_file`）。批处理下沉到各 sink 内部，
+引擎在任务循环结束后统一调用 `flush` 收尾。
 
 ---
 

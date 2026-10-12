@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from .schema import TaskConfig
+from crawler.sinks import SINK_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -110,16 +111,23 @@ class TaskLoader:
             logger.error("任务 '%s' 缺少 outputs 字段", name)
             return None
 
-        # 每个 output 至少要有 target_table 或 target_api 之一
+        # 每个 output 至少要命中一个已注册 sink 的 key
+        # （target_table / target_api / target_mysql / target_file）
         for output_config in outputs_config:
-            if not output_config.get("target_table") and not output_config.get("target_api"):
+            if not (SINK_KEYS & set(output_config.keys())):
                 logger.error(
-                    "任务 '%s' 的 output 缺少 target_table 或 target_api", name
+                    "任务 '%s' 的 output 未命中任何已注册的输出目标 %s",
+                    name, sorted(SINK_KEYS),
                 )
                 return None
 
-        # 取第一个 output 的 table 作为主表记录
-        first_table = outputs_config[0].get("target_table", "unknown")
+        # 取第一个 output 的表名作为主表记录（本地 SQLite 或远程 MySQL）
+        first_output = outputs_config[0]
+        first_table = (
+            first_output.get("target_table")
+            or first_output.get("target_mysql")
+            or "unknown"
+        )
 
         # trigger_type 必填且必须与目录一致
         trigger_type_in_config = config.get("trigger_type")

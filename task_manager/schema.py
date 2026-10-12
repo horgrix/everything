@@ -192,6 +192,12 @@ class OutputConfig(_ConfigBase):
     def target_api(self) -> dict | None: return self._raw.get("target_api")
 
     @property
+    def target_mysql(self) -> str | None: return self._raw.get("target_mysql")
+
+    @property
+    def target_file(self) -> dict | None: return self._raw.get("target_file")
+
+    @property
     def table_schema(self) -> TableSchema:
         return TableSchema(_raw=self._raw.get("table_schema", {}))
 
@@ -322,6 +328,9 @@ class TaskConfig(_ConfigBase):
 
     @property
     def target_table(self) -> str:
-        """Primary target table (first output's table)."""
+        """Primary output target (local table, else remote MySQL table)."""
         outputs = self.outputs
-        return outputs[0].target_table if outputs else "unknown"
+        if not outputs:
+            return "unknown"
+        first = outputs[0]
+        return first.target_table or first.target_mysql or "unknown"

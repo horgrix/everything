@@ -3,18 +3,25 @@ Data pipeline: parse → clean → filter → inject → write.
 
 Extracted from CrawlerEngine so the engine only orchestrates
 while the pipeline handles all data transformation.
+
+Output is no longer hard-coded: the pipeline walks an
+:class:`~crawler.sinks.base.SinkRegistry` and dispatches to every sink whose
+``output`` key is present. Batching is owned by the sinks themselves (see
+``crawler/sinks/``).
 """
 
-from dataclasses import dataclass, field
-import json
+from dataclasses import dataclass
+import json  # noqa: F401  (kept so tests can patch crawler.pipeline.urllib)
 import logging
-import urllib.error
-import urllib.request
+import urllib.error  # noqa: F401
+import urllib.request  # noqa: F401
 from typing import Any
 
 from .parser import Parser
 from .cleaner import Cleaner
-from .template import URLTemplate
+from .sinks import create_default_sink_registry
+from .sinks.base import SinkRegistry, SinkResult
+from .sinks.api_sink import ApiSink
 
 logger = logging.getLogger(__name__)
 
@@ -37,22 +44,40 @@ class PipelineResult:
             api_failed=self.api_failed + other.api_failed,
         )
 
+    def add_sink_result(self, sink_result: SinkResult) -> "PipelineResult":
+        """Fold a SinkResult into this result (mutates and returns self)."""
+        self.inserted += sink_result.inserted
+        self.updated += sink_result.updated
+        self.api_sent += sink_result.sent
+        self.api_failed += sink_result.failed
+        return self
+
 
 class DataPipeline:
     """
     Stateless data transformation pipeline.
 
     Takes raw data from a DataSource and an output config,
-    runs the full chain: parse → clean → filter → inject → upsert.
+    runs the full chain: parse → clean → filter → inject → sink dispatch.
 
     Usage:
-        pipeline = DataPipeline(parser, cleaner, db)
-        result = pipeline.process(raw_data, output_config, context)
+        pipeline = DataPipeline(parser, cleaner, sinks)
+        result = pipeline.process(raw_data, output_config, db, context)
     """
 
-    def __init__(self, parser: Parser = None, cleaner: Cleaner = None):
+    def __init__(self, parser: Parser = None, cleaner: Cleaner = None,
+                 sinks: SinkRegistry = None):
         self._parser = parser or Parser()
         self._cleaner = cleaner or Cleaner()
+        self._sinks = sinks if sinks is not None else create_default_sink_registry()
+
+    @property
+    def sinks(self) -> SinkRegistry:
+        return self._sinks
+
+    # ================================================================
+    # Sync entry point (used by tests / direct callers)
+    # ================================================================
 
     def process(
         self,
@@ -63,81 +88,98 @@ class DataPipeline:
         collect_rows: list | None = None,
     ) -> PipelineResult:
         """
-        Process one output target against raw data.
+        Process one output target against raw data (synchronous).
 
-        Steps:
-          1. Ensure target table exists (only when target_table present)
-          2. Extract page-level elements (element_selector)
-          3. Parse raw data into rows
-          4. Clean & filter rows
-          5. Inject source_url
-          6. Batch UPSERT into database (only when target_table present)
-          7. POST rows to remote API (only when target_api present)
+        Dispatches to every registered sink whose key is present, calling
+        ``prepare`` then ``write``, and finally ``flush`` (immediate mode).
 
         Args:
-            collect_rows: 批量上传模式。传入一个 list 时，清洗后的 rows
-                会被 extend 进去，而不是立即 POST（由调用方统一 flush）。
-                为 None 时保持逐次立即上传（向后兼容）。
+            collect_rows: **Deprecated.** Legacy batch mode kept for backward
+                compatibility: when a list is passed, cleaned rows for a
+                ``target_api`` output are appended to it instead of being
+                dispatched, so the caller can flush them later. The engine no
+                longer uses this (sinks buffer internally).
 
         Returns:
-            PipelineResult with inserted/updated/total/api_sent/api_failed counts.
+            PipelineResult with inserted/updated/total/api_sent/api_failed.
         """
-        table = output_config.get("target_table", "")
-        target_api = output_config.get("target_api")
-        parser_config = output_config.get("parser", {})
-        parser_fields = parser_config.get("fields", [])
-        table_schema = output_config.get("table_schema", {})
+        result = PipelineResult()
+        self._prepare_sinks(output_config, context, db)
 
-        # 1. Ensure business table exists（仅 target_table）
-        if table and table_schema:
-            db.ensure_business_table(
-                table,
-                table_schema.get("columns", []),
-                table_schema.get("indexes", []),
-            )
+        cleaned = self._transform(raw_data, output_config, context)
+        if cleaned is None:
+            return result
 
-        # 2. Extract page-level elements into context
-        element_selector_config = parser_config.get("element_selector", {})
-        if element_selector_config:
-            element_vars = self._parser.extract_element_vars(
-                raw_data, element_selector_config
-            )
-            context.update(element_vars)
+        result.total = len(cleaned)
+        if not cleaned:
+            return result
 
-        # 3. Parse
-        parsed = self._parser.parse_rows(raw_data, parser_config, context=context)
-        if not parsed:
-            return PipelineResult()
-
-        # 4. Clean & filter
-        cleaned = self._cleaner.clean_batch(parsed, parser_fields)
-
-        # 5. Inject source_url
-        src_field_names = Cleaner.field_names(parser_fields)
-        url = context.get("url", "")
-        if "source_url" in src_field_names and url:
-            for row in cleaned:
-                if "source_url" not in row:
-                    row["source_url"] = url
-
-        result = PipelineResult(total=len(cleaned))
-
-        # 6. Batch upsert（仅 target_table）
-        if table:
-            db_result = db.insert_business_records_batch(table, cleaned)
-            result.inserted = db_result["inserted"]
-            result.updated = db_result["updated"]
-
-        # 7. POST to remote API（仅 target_api）
-        if target_api:
-            if collect_rows is not None:
-                # 批量模式：累积 rows，由 engine 在循环结束后统一 flush
+        for sink in self._sinks.all():
+            if sink.key not in output_config:
+                continue
+            if collect_rows is not None and sink.key == "target_api":
                 collect_rows.extend(cleaned)
-            elif self._post_to_api(target_api, cleaned, context):
-                result.api_sent = len(cleaned)
-            else:
-                result.api_failed = len(cleaned)
+                continue
+            result.add_sink_result(sink.write(cleaned, output_config, context, db))
+            if collect_rows is None:
+                result.add_sink_result(sink.flush(output_config, context, db))
 
+        return result
+
+    # ================================================================
+    # Async entry point (used by the engine)
+    # ================================================================
+
+    async def process_async(
+        self,
+        raw_data: Any,
+        output_config: dict,
+        db,
+        context: dict,
+    ) -> PipelineResult:
+        """Async variant: prepare + write only; caller flushes at end of run."""
+        result = PipelineResult()
+        await self._prepare_sinks_async(output_config, context, db)
+
+        cleaned = self._transform(raw_data, output_config, context)
+        if cleaned is None:
+            return result
+
+        result.total = len(cleaned)
+        if not cleaned:
+            return result
+
+        for sink in self._sinks.all():
+            if sink.key not in output_config:
+                continue
+            sink_result = await sink.write_async(cleaned, output_config, context, db)
+            result.add_sink_result(sink_result)
+
+        return result
+
+    # ================================================================
+    # Flush: end-of-run, once per output per sink
+    # ================================================================
+
+    async def flush_outputs(self, outputs: list[dict], context: dict, db) -> PipelineResult:
+        """Flush every sink hit by ``outputs`` (end of run)."""
+        result = PipelineResult()
+        for output_config in outputs:
+            for sink in self._sinks.all():
+                if sink.key not in output_config:
+                    continue
+                sink_result = await sink.flush_async(output_config, context, db)
+                result.add_sink_result(sink_result)
+        return result
+
+    def flush_outputs_sync(self, outputs: list[dict], context: dict, db) -> PipelineResult:
+        """Synchronous variant of :meth:`flush_outputs`."""
+        result = PipelineResult()
+        for output_config in outputs:
+            for sink in self._sinks.all():
+                if sink.key not in output_config:
+                    continue
+                result.add_sink_result(sink.flush(output_config, context, db))
         return result
 
     def flush_api(
@@ -146,62 +188,62 @@ class DataPipeline:
         rows: list[dict],
         context: dict,
     ) -> PipelineResult:
-        """把攒批累积的 rows 统一 POST 到 target_api（一次批量上传）。
+        """POST accumulated rows to ``target_api`` in a single request.
 
-        Args:
-            target_api_config: output 的 target_api 配置（含 url/method/headers）。
-            rows: 累积的清洗后行数据。
-            context: 用于解析 target_api url 中的模板变量。
-
-        Returns:
-            PipelineResult with api_sent/api_failed counts.
+        Backward-compatible helper (the ApiSink now owns batching).
         """
         if not rows:
             return PipelineResult()
-        if self._post_to_api(target_api_config, rows, context):
+        if ApiSink._post_to_api(target_api_config, rows, context):
             return PipelineResult(api_sent=len(rows))
         return PipelineResult(api_failed=len(rows))
 
-    def _post_to_api(
-        self,
-        target_api_config: dict,
-        rows: list[dict],
-        context: dict,
-    ) -> bool:
-        """把清洗后的 rows 通过 HTTP POST 到远程 API（body 固定 {"rows": [...]}）。"""
-        url = target_api_config.get("url", "")
-        if not url:
-            logger.error("target_api 缺少 url，跳过上传")
-            return False
+    # Kept for backward compatibility with older callers/tests.
+    def _post_to_api(self, target_api_config: dict, rows: list[dict], context: dict) -> bool:
+        return ApiSink._post_to_api(target_api_config, rows, context)
 
-        url = URLTemplate.resolve(url, context=context)
-        method = target_api_config.get("method", "POST")
-        headers = {"Content-Type": "application/json"}
-        headers.update(target_api_config.get("headers", {}))
+    def close_sinks(self) -> None:
+        """Release resources held by sinks (DB connections, ...)."""
+        self._sinks.close()
 
-        payload = json.dumps({"rows": rows}, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(
-            url, data=payload, headers=headers, method=method
-        )
+    # ================================================================
+    # Internal
+    # ================================================================
 
-        try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                body = resp.read().decode("utf-8")
-                status = resp.status
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", "replace")
-            logger.error("target_api 上传失败 HTTP %s: %s", e.code, body)
-            return False
-        except urllib.error.URLError as e:
-            logger.error("target_api 上传失败：%s", e.reason)
-            return False
+    def _hit_sinks(self, output_config: dict):
+        return [s for s in self._sinks.all() if s.key in output_config]
 
-        logger.info(
-            "target_api 上传 %d 行到 %s，HTTP %s: %s",
-            len(rows), url, status, body,
-        )
-        try:
-            result = json.loads(body)
-        except json.JSONDecodeError:
-            result = {}
-        return result.get("code") == 0
+    def _prepare_sinks(self, output_config: dict, context: dict, db) -> None:
+        for sink in self._hit_sinks(output_config):
+            sink.prepare(output_config, context, db)
+
+    async def _prepare_sinks_async(self, output_config: dict, context: dict, db) -> None:
+        for sink in self._hit_sinks(output_config):
+            await sink.prepare_async(output_config, context, db)
+
+    def _transform(self, raw_data: Any, output_config: dict, context: dict) -> list[dict] | None:
+        """parse → clean → inject source_url. Returns None when no rows parsed."""
+        parser_config = output_config.get("parser", {})
+
+        element_selector_config = parser_config.get("element_selector", {})
+        if element_selector_config:
+            element_vars = self._parser.extract_element_vars(
+                raw_data, element_selector_config
+            )
+            context.update(element_vars)
+
+        parsed = self._parser.parse_rows(raw_data, parser_config, context=context)
+        if not parsed:
+            return None
+
+        parser_fields = parser_config.get("fields", [])
+        cleaned = self._cleaner.clean_batch(parsed, parser_fields)
+
+        src_field_names = Cleaner.field_names(parser_fields)
+        url = context.get("url", "")
+        if "source_url" in src_field_names and url:
+            for row in cleaned:
+                if "source_url" not in row:
+                    row["source_url"] = url
+
+        return cleaned

@@ -13,6 +13,9 @@ from .dedup import URLDedup
 from .pipeline import DataPipeline, PipelineResult
 from .template import URLTemplate
 from .sources.base import SourceRegistry
+from .sinks import create_default_sink_registry
+from .sinks.base import SinkRegistry
+from .sinks.api_sink import ApiSink
 from .task_log import TaskLogHandler, resolve_log_config
 
 logger = logging.getLogger(__name__)
@@ -39,15 +42,20 @@ class CrawlerEngine:
     """
 
     def __init__(self, sources: SourceRegistry = None, pipeline: DataPipeline = None,
-                 log_dir: str = "logs"):
+                 log_dir: str = "logs", sinks: SinkRegistry = None):
         self._sources = sources or SourceRegistry()
-        self._pipeline = pipeline or DataPipeline()
+        if pipeline is None:
+            pipeline = DataPipeline(
+                sinks=sinks if sinks is not None else create_default_sink_registry()
+            )
+        self._pipeline = pipeline
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
         self._log_dir = log_dir
 
     async def close(self) -> None:
         """关闭所有数据源持有的资源（如 HTTP 连接池）。"""
         await self._sources.close()
+        self._pipeline.close_sinks()
 
     async def run(self, task_config: dict, db, url_context: dict = None) -> dict:
         """
@@ -80,9 +88,8 @@ class CrawlerEngine:
         request_batch_size = int(request_batch.get("size", 0) or 0)
         request_batch_pause = float(request_batch.get("pause", 0) or 0)
 
-        # 批量上传：每个 output 累积清洗后的 rows，按 batch_size 分批 POST
+        # 输出目标：每个 output 的写入由 sink 自行缓冲并在收尾时 flush
         outputs = self._resolve_outputs(task_config)
-        collected_rows = [[] for _ in outputs]
 
         last_raw_data = None  # 最近一次成功 fetch 的 raw_data（供失败时写 error.log）
 
@@ -126,24 +133,14 @@ class CrawlerEngine:
             # 组级文件日志：成功后写 data.log（仅 logging.data 开启时）
             await self._log_data(task_config, raw_data)
 
-            # 2. Expand outputs + process each via pipeline（批量模式累积 rows）
-            for oi, output_config in enumerate(outputs):
-                total += self._pipeline.process(
+            # 2. Expand outputs + process each via pipeline（sink 内部自行缓冲）
+            for output_config in outputs:
+                total += await self._pipeline.process_async(
                     raw_data, output_config, db, ctx,
-                    collect_rows=collected_rows[oi],
                 )
-                # 攒够 batch_size 就 flush 一批（未配置 batch_size 时循环结束统一 flush）
-                batch_size = self._get_batch_size(output_config)
-                if batch_size > 0 and len(collected_rows[oi]) >= batch_size:
-                    total += self._flush_output_api(
-                        output_config, collected_rows[oi], base_context,
-                    )
 
-        # 3. 循环结束后 flush 每个 output 剩余的 rows
-        for oi, output_config in enumerate(outputs):
-            total += self._flush_output_api(
-                output_config, collected_rows[oi], base_context,
-            )
+        # 3. 循环结束后 flush 每个 output 的 sink 缓冲
+        total += await self._pipeline.flush_outputs(outputs, base_context, db)
 
         return {
             "new": total.inserted,
@@ -258,29 +255,13 @@ class CrawlerEngine:
         return task_config.get("outputs", [])
 
     # ================================================================
-    # Batched target_api upload
+    # Batched upload compatibility shim (batching now lives in ApiSink)
     # ================================================================
 
     @staticmethod
     def _get_batch_size(output_config: dict) -> int:
-        """读取 output.target_api.batch_size（正整数），未配置/非法返回 0。
+        """Deprecated: batching moved into ApiSink/CrawlerEngine sinks.
 
-        batch_size > 0 时按批 flush；= 0 时循环结束后统一 flush。
+        Kept as a thin forwarder so existing callers/tests keep working.
         """
-        target_api = output_config.get("target_api") or {}
-        raw = target_api.get("batch_size", 0)
-        try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return 0
-
-    def _flush_output_api(
-        self, output_config: dict, collected_rows: list, context: dict,
-    ) -> PipelineResult:
-        """flush 单个 output 累积的 rows 到 target_api，并清空缓冲。"""
-        target_api = output_config.get("target_api")
-        if not target_api or not collected_rows:
-            return PipelineResult()
-        result = self._pipeline.flush_api(target_api, collected_rows, context)
-        collected_rows.clear()
-        return result
+        return ApiSink.get_batch_size(output_config)
