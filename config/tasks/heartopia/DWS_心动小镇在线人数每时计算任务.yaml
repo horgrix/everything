@@ -1,0 +1,72 @@
+name: "DWS_心动小镇在线人数每时计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      '心动小镇' as app_name, 
+      SUM(online_players) as online_players,
+      SUM(CASE WHEN source = 'steam' THEN online_players ELSE 0 END) AS steam_online_players,
+      SUM(CASE WHEN source = 'tappc' THEN online_players ELSE 0 END) AS tappc_online_players
+    FROM (
+      SELECT 
+        steam_id as app_id, 
+        'steam' as source,
+        peak_players as online_players,
+        strftime('%Y-%m-%d %H', stat_ts / 1000, 'unixepoch', 'localtime') as crawled_at
+      FROM steam_game_peak_players_hourly 
+      WHERE strftime('%Y', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y', 'now', 'localtime')
+      AND steam_id in (4025700)
+      AND CAST(strftime('%H', datetime(stat_ts / 1000, 'unixepoch', 'localtime')) AS INTEGER) % 2 = 0
+      UNION ALL
+      SELECT
+        app_id as app_id,
+        'tappc' as source,
+        online_players as online_players,
+        crawled_at as crawled_at
+      FROM dws_taptap_pc_online_peak_players_rank_hourly
+      WHERE app_id = 45213
+      AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+    ) as a
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "41 * * * *"
+outputs:
+  - target_table: "dws_games_heartopia‌_online_players_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: online_players
+          type: INTEGER
+        - name: steam_online_players
+          type: INTEGER
+        - name: tappc_online_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_heartopia‌_online_players_hourly
+          columns: [app_name, crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name
+        - name: online_players
+          source: online_players
+          to_number: true
+        - name: steam_online_players
+          source: steam_online_players
+          to_number: true
+        - name: tappc_online_players
+          source: tappc_online_players
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

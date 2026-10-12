@@ -23,7 +23,7 @@ db:
     WHERE substr(crawled_at, 1, 7) = strftime('%Y-%m', 'now', 'localtime')
     GROUP BY app_name, substr(crawled_at, 1, 7)
 trigger_type: system
-schedule: "42 * * * *"
+schedule: "44 * * * *"
 outputs:
   - target_table: "dws_games_torchlight_online_players_monthly"
     table_schema:

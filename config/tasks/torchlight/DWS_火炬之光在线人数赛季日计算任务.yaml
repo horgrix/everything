@@ -33,6 +33,7 @@ db:
       tappc_peak_players,
       tappc_avg_players
     FROM dws_games_torchlight_online_players_daily
+    WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
 trigger_type: system
 schedule: "43 * * * *"
 outputs:

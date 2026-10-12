@@ -36,7 +36,7 @@ db:
     ) as a
     GROUP BY crawled_at
 trigger_type: system
-schedule: "40 * * * *"
+schedule: "41 * * * *"
 outputs:
   - target_table: "dws_games_torchlight_online_players_hourly"
     table_schema:

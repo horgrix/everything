@@ -1,0 +1,75 @@
+name: "DWS_心动小镇在线人数每天计算任务"
+depends_on:
+  - "DWS_心动小镇在线人数每时计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      substr(crawled_at, 1, 10) AS crawled_at,
+      app_name, 
+      MAX(online_players) as peak_players,
+      AVG(online_players) as avg_players,
+      MAX(steam_online_players) as steam_peak_players,
+      AVG(steam_online_players) as steam_avg_players,
+      MAX(tappc_online_players) as tappc_peak_players,
+      AVG(tappc_online_players) as tappc_avg_players
+    FROM dws_games_heartopia‌_online_players_hourly
+    WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+    GROUP BY app_name, substr(crawled_at, 1, 10)
+trigger_type: system
+schedule: "42 * * * *"
+outputs:
+  - target_table: "dws_games_heartopia_online_players_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: peak_players
+          type: INTEGER
+        - name: avg_players
+          type: INTEGER
+        - name: steam_peak_players
+          type: INTEGER
+        - name: steam_avg_players
+          type: INTEGER
+          type: INTEGER
+        - name: tappc_peak_players
+          type: INTEGER
+        - name: tappc_avg_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_heartopia_online_players_daily
+          columns: [crawled_at, app_name]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name
+        - name: peak_players
+          source: peak_players
+          to_number: true
+        - name: avg_players
+          source: avg_players
+          to_number: true
+        - name: steam_peak_players
+          source: steam_peak_players
+          to_number: true
+        - name: steam_avg_players
+          source: steam_avg_players
+          to_number: true
+        - name: tappc_peak_players
+          source: tappc_peak_players
+          to_number: true
+        - name: tappc_avg_players
+          source: tappc_avg_players
+          to_number: true
+        - name: crawled_at
+          source: crawled_at
