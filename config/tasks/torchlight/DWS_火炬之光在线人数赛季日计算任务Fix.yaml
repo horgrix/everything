@@ -1,0 +1,105 @@
+name: "DWS_火炬之光在线人数赛季日计算任务Fix"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      '火炬之光：无限' as app_name,
+      ss,
+      ss_day - 1 as ss_day,
+      SUM(peak_players) as peak_players,
+      0 as avg_players,
+      SUM(peak_players) as steam_peak_players,
+      0 as steam_avg_players,
+      SUM(CASE WHEN steam_id = 1974050 THEN peak_players ELSE 0 END) as steam_1974050_peak_players,
+      0 as steam_1974050_avg_players,
+      SUM(CASE WHEN steam_id = 2315040 THEN peak_players ELSE 0 END) as steam_2315040_peak_players,
+      0 as steam_2315040_avg_players,
+      0 as tappc_peak_players,
+      0 as tappc_avg_players
+    FROM torchlight_season_steam_peak_players
+    WHERE (ss = 13 and ss_day <= 50) OR (ss <= 12)
+    GROUP BY ss, ss_day
+trigger_type: system
+schedule: "43 * * 9 *"
+outputs:
+  - target_table: "dws_games_torchlight_season_online_players"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: ss
+          type: INTEGER
+        - name: ss_day
+          type: INTEGER
+        - name: peak_players
+          type: INTEGER
+        - name: avg_players
+          type: INTEGER
+        - name: steam_peak_players
+          type: INTEGER
+        - name: steam_avg_players
+          type: INTEGER
+        - name: steam_1974050_peak_players
+          type: INTEGER
+        - name: steam_1974050_avg_players
+          type: INTEGER
+        - name: steam_2315040_peak_players
+          type: INTEGER
+        - name: steam_2315040_avg_players
+          type: INTEGER
+        - name: tappc_peak_players
+          type: INTEGER
+        - name: tappc_avg_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_torchlight_season_online_players
+          columns: [app_name, ss, ss_day]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name 
+        - name: ss
+          source: ss
+          to_number: true     
+        - name: ss_day
+          source: ss_day
+          to_number: true
+        - name: peak_players
+          source: peak_players
+          to_number: true
+        - name: avg_players
+          source: avg_players
+          to_number: true
+        - name: steam_peak_players
+          source: steam_peak_players
+          to_number: true
+        - name: steam_avg_players
+          source: steam_avg_players
+          to_number: true
+        - name: steam_1974050_peak_players
+          source: steam_1974050_peak_players
+          to_number: true
+        - name: steam_1974050_avg_players
+          source: steam_1974050_avg_players
+          to_number: true
+        - name: steam_2315040_peak_players
+          source: steam_2315040_peak_players
+          to_number: true
+        - name: steam_2315040_avg_players
+          source: steam_2315040_avg_players
+          to_number: true
+        - name: tappc_peak_players
+          source: tappc_peak_players
+          to_number: true
+        - name: tappc_avg_players
+          source: tappc_avg_players
+          to_number: true
