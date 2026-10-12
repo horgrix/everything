@@ -71,3 +71,6 @@ chromedriver.exe
 # debug files
 debug_steam.png
 debug_steam.html
+
+# 本地临时调试文件
+tmp/

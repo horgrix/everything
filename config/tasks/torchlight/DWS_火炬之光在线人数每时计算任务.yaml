@@ -1,0 +1,92 @@
+name: "DWS_火炬之光在线人数每时计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      '火炬之光：无限' as app_name, 
+      SUM(online_players) as online_players,
+      SUM(CASE WHEN source = 'steam' THEN online_players ELSE 0 END) AS steam_online_players,
+      SUM(CASE WHEN source = 'steam' AND 
+                    app_id = 1974050 THEN online_players ELSE 0 END) AS steam_1974050_online_players,
+      SUM(CASE WHEN source = 'steam' AND 
+                    app_id = 2315040 THEN online_players ELSE 0 END) AS steam_2315040_online_players,
+      SUM(CASE WHEN source = 'tappc' THEN online_players ELSE 0 END) AS tappc_online_players
+    FROM (
+      SELECT 
+        steam_id as app_id, 
+        'steam' as source,
+        peak_players as online_players,
+        strftime('%Y-%m-%d %H', stat_ts / 1000, 'unixepoch', 'localtime') as crawled_at
+      FROM steam_game_peak_players_hourly 
+      WHERE strftime('%Y', stat_ts / 1000, 'unixepoch', 'localtime') = strftime('%Y', 'now', 'localtime')
+      AND steam_id in (1974050, 2315040)
+      AND CAST(strftime('%H', datetime(stat_ts / 1000, 'unixepoch', 'localtime')) AS INTEGER) % 2 = 0
+      UNION ALL
+      SELECT
+        app_id as app_id,
+        'tappc' as source,
+        online_players as online_players,
+        crawled_at as crawled_at
+      FROM dws_taptap_pc_online_peak_players_rank_hourly
+      WHERE app_id = 172664
+      AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    ) as a
+    GROUP BY crawled_at
+trigger_type: system
+schedule: "40 * * * *"
+outputs:
+  - target_table: "dws_games_torchlight_online_players_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: online_players
+          type: INTEGER
+        - name: steam_online_players
+          type: INTEGER
+        - name: steam_1974050_online_players
+          type: INTEGER
+        - name: steam_2315040_online_players
+          type: INTEGER
+        - name: tappc_online_players
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_torchlight_online_players
+          columns: [app_name, crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name
+        - name: ss
+          source: ss
+          to_number: true     
+        - name: ss_day
+          source: ss_day
+          to_number: true
+        - name: online_players
+          source: online_players
+          to_number: true
+        - name: steam_online_players
+          source: steam_online_players
+          to_number: true
+        - name: steam_1974050_online_players
+          source: steam_1974050_online_players
+          to_number: true
+        - name: steam_2315040_online_players
+          source: steam_2315040_online_players
+          to_number: true
+        - name: tappc_online_players
+          source: tappc_online_players
+          to_number: true
+        - name: crawled_at
+          source: crawled_at
