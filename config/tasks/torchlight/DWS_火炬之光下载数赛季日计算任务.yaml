@@ -1,0 +1,93 @@
+name: "DWS_火炬之光下载数赛季日计算任务"
+depends_on:
+  - "DWS_火炬之光下载数每天计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      app_name,
+      CASE
+        WHEN crawled_at >= '2026-10-16 10' THEN 14
+        WHEN crawled_at >= '2026-07-17 10' THEN 13
+        WHEN crawled_at >= '2026-04-17 10' THEN 12
+        WHEN crawled_at >= '2026-01-16 10' THEN 11
+        ELSE 10
+      END AS ss,
+      CASE
+        WHEN crawled_at >= '2026-10-16 10' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN crawled_at >= '2026-07-17 10' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN crawled_at >= '2026-04-17 10' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN crawled_at >= '2026-01-16 10' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
+        ELSE 0
+      END AS ss_day,
+      tap_download_count,
+      tap_pc_download_count,
+      tap_app_download_count,
+      ios_cn_download_count,
+      iphone_cn_download_count,
+      ipad_cn_download_count
+    FROM dws_games_torchlight_download_daily
+trigger_type: system
+schedule: "45 * * * *"
+outputs:
+  - target_table: "dws_games_torchlight_season_download"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: ss
+          type: INTEGER
+        - name: ss_day
+          type: INTEGER
+        - name: tap_download_count
+          type: INTEGER
+        - name: tap_pc_download_count
+          type: INTEGER
+        - name: tap_app_download_count
+          type: INTEGER
+        - name: ios_cn_download_count
+          type: INTEGER
+        - name: iphone_cn_download_count
+          type: INTEGER
+        - name: ipad_cn_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_torchlight_season_download
+          columns: [app_name, ss, ss_day]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name 
+        - name: ss
+          source: ss
+          to_number: true     
+        - name: ss_day
+          source: ss_day
+          to_number: true
+        - name: tap_download_count
+          source: tap_download_count
+          to_number: true
+        - name: tap_pc_download_count
+          source: tap_pc_download_count
+          to_number: true
+        - name: tap_app_download_count
+          source: tap_app_download_count
+          to_number: true
+        - name: ios_cn_download_count
+          source: ios_cn_download_count
+          to_number: true
+        - name: iphone_cn_download_count
+          source: iphone_cn_download_count
+          to_number: true
+        - name: ipad_cn_download_count
+          source: ipad_cn_download_count
+          to_number: true
