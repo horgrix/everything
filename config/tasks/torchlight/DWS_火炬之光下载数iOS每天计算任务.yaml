@@ -23,7 +23,7 @@ db:
       GROUP BY stat_ts, app_name
     )
 trigger_type: system
-schedule: "44 */2 * * *"
+schedule: "44 * 8 * *"
 outputs:
   - target_table: "dws_games_torchlight_ios_download_daily"
     table_schema:

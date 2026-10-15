@@ -35,7 +35,7 @@ db:
     FROM dws_games_torchlight_online_players_daily
     WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
 trigger_type: system
-schedule: "43 * * * *"
+schedule: "43 */2 * * *"
 outputs:
   - target_table: "dws_games_torchlight_season_online_players"
     table_schema:
