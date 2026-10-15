@@ -1,0 +1,63 @@
+name: "DWS_火炬之光下载数iOS每天计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      crawled_at,
+      app_name,
+      ios_cn_download_count,
+      iphone_cn_download_count,
+      ipad_cn_download_count
+    FROM
+    (
+      SELECT
+        stat_ts as crawled_at,
+        app_name,
+        SUM(download) as ios_cn_download_count,
+        SUM(CASE WHEN platform = 'iphone' THEN download ELSE 0 END) as iphone_cn_download_count,
+        SUM(CASE WHEN platform = 'ipad' THEN download ELSE 0 END) as ipad_cn_download_count
+      FROM ios_xd_games_downlod_daily
+      WHERE stat_ts >= "{days_ago:91}"
+      GROUP BY stat_ts, app_name
+    )
+trigger_type: system
+schedule: "44 */2 * * *"
+outputs:
+  - target_table: "dws_games_torchlight_ios_download_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_name
+          type: TEXT
+        - name: ios_cn_download_count
+          type: INTEGER
+        - name: iphone_cn_download_count
+          type: INTEGER
+        - name: ipad_cn_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_games_torchlight_ios_download_daily
+          columns: [crawled_at, app_name]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_name
+          source: app_name
+        - name: ios_cn_download_count
+          source: ios_cn_download_count
+          to_number: true
+        - name: iphone_cn_download_count
+          source: iphone_cn_download_count
+          to_number: true
+        - name: ipad_cn_download_count
+          source: ipad_cn_download_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

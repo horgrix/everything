@@ -1,35 +1,43 @@
 name: "DWS_火炬之光下载数赛季日计算任务"
 depends_on:
-  - "DWS_火炬之光下载数每天计算任务"
+  - "DWS_火炬之光下载数iOS每天计算任务"
+  - "DWS_火炬之光下载数Tap每天计算任务"
 type: db
 db:
   type: sqlite
   path: "crawler.db"
   query: >
     SELECT 
-      app_name,
+      a.app_name,
       CASE
-        WHEN crawled_at >= '2026-10-16 10' THEN 14
-        WHEN crawled_at >= '2026-07-17 10' THEN 13
-        WHEN crawled_at >= '2026-04-17 10' THEN 12
-        WHEN crawled_at >= '2026-01-16 10' THEN 11
+        WHEN a.crawled_at >= '2026-10-16 10' THEN 14
+        WHEN a.crawled_at >= '2026-07-17 10' THEN 13
+        WHEN a.crawled_at >= '2026-04-17 10' THEN 12
+        WHEN a.crawled_at >= '2026-01-16 10' THEN 11
         ELSE 10
       END AS ss,
       CASE
-        WHEN crawled_at >= '2026-10-16 10' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN crawled_at >= '2026-07-17 10' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN crawled_at >= '2026-04-17 10' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN crawled_at >= '2026-01-16 10' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-10-16 10' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-07-17 10' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-04-17 10' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-01-16 10' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
         ELSE 0
       END AS ss_day,
-      tap_download_count,
-      tap_pc_download_count,
-      tap_app_download_count,
-      ios_cn_download_count,
-      iphone_cn_download_count,
-      ipad_cn_download_count
-    FROM dws_games_torchlight_download_daily
-    WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
+      a.tap_download_count,
+      a.tap_pc_download_count,
+      a.tap_app_download_count,
+      b.ios_cn_download_count,
+      b.iphone_cn_download_count,
+      b.ipad_cn_download_count
+    FROM 
+      dws_games_torchlight_tap_download_daily a
+    INNER JOIN
+      dws_games_torchlight_ios_download_daily b
+    ON 
+      a.crawled_at = b.crawled_at
+    AND 
+      a.app_name = b.app_name
+    WHERE a.crawled_at >= "{days_ago:91}"
 trigger_type: system
 schedule: "45 */2 * * *"
 outputs:
