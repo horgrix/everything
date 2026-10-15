@@ -1457,6 +1457,8 @@ https://api.example.com/v1/items?region=hk&app=123456
 
 `URLTemplate.resolve` 已内置 `${ENV_VAR}` 替换，语法是 `${变量名}`（变量名需符合 `[A-Za-z_][A-Za-z0-9_]*`）。替换在 `{var}` 正则之前执行，所以 `${X}` 不会被 `{X}` 规则误处理。
 
+环境变量解析全仓只有一个实现（`crawler.template.resolve_env_vars`）：命中环境变量则替换为其值；**缺失时保留 `${VAR}` 原样并写 warning**（不静默变空串）。数据库密码等敏感字段只做 `${ENV}` 替换，**不会**把值里的 `{xxx}` 当时间/自定义变量解析。
+
 因为**任何走模板解析的字符串**都会经过它，所以下列位置全都支持 `${ENV_VAR}`：
 
 - 任务的 `url`
@@ -1464,6 +1466,7 @@ https://api.example.com/v1/items?region=hk&app=123456
 - `headers` 的静态字符串值
 - parser 字段的 `value`
 - `db.query`（包括 `type: db` 数据源与查库参数的 `query`）
+- 文件数据源的 `file.path`
 - 输出 sink 的 `url`（`target_api`）、`path`（`target_file`）
 
 **缺失行为**：环境变量未设置时，**保留 `${VAR}` 原样并写 warning 日志**（不会静默替换为空串），方便定位配置漏配。
@@ -1504,7 +1507,7 @@ db:
   query: "SELECT app_id, name FROM apps WHERE stat_date = '{yesterday}'"
 ```
 
-**已知边界**：`type: file` 数据源的本地文件路径（`file.path`）**不经过模板解析**，`${ENV}` 和 `{today}` 在那里都不会被替换；请直接写死路径。注意与输出侧区分：`outputs[].target_file.path` 是走模板解析的（如上例）。
+**模板解析**：`type: file` 数据源的本地文件路径（`file.path`）与其它数据源一致，走模板解析，`${ENV}` 和 `{today}` 等都会被替换（例如 `path: "data/{today}.csv"` 或 `path: "${DATA_DIR}/history.csv"`）。行为与输出侧 `outputs[].target_file.path` 一致。
 
 ### 查库参数
 
@@ -1513,7 +1516,7 @@ db:
 **db 配置**：
 
 - 缺省（不写 `db`）→ `{type: sqlite, path: crawler.db}`，即查当前工作目录下的本地 `crawler.db`；
-- 也可显式写外部库，字段与 `type: db` 数据源一致：`db: {type: mysql, host, port, user, password, database}`，`password` 支持 `${ENV}`（复用 `DbSource`）。MySQL 连接固定使用 `utf8mb4` 字符集 + `DictCursor`，读/连接超时 30s/10s。
+- 也可显式写外部库，字段与 `type: db` 数据源一致：`db: {type: mysql, host, port, user, password, database}`，`password` 支持 `${ENV}`（复用统一的 `crawler.template.resolve_env_vars`）。MySQL 连接固定使用 `utf8mb4` 字符集 + `DictCursor`，读/连接超时 30s/10s。
 
 **取值方式**：
 
@@ -1849,8 +1852,8 @@ db:
 | `enabled` | boolean | `false` | 总开关 |
 | `delay` | [min, max] | `[1, 3]` | 每次请求前随机延迟（秒） |
 | `rotate_user_agent` | boolean | `false` | 每次随机换 User-Agent |
-| `use_proxy` | boolean | `false` | 是否启用代理 |
-| `proxies` | list | `[]` | 代理地址列表 |
+| `use_proxy` | boolean | `false` | **尚未实现**（配置被接受但不会生效） |
+| `proxies` | list | `[]` | **尚未实现**（配置被接受但不会生效） |
 
 ```yaml
 anti_spider:

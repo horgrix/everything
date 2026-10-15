@@ -86,7 +86,9 @@ class HttpSource(DataSource):
     Anti-spider features (from YAML anti_spider block):
       - Random delay before request
       - User-Agent rotation
-      - Proxy rotation
+
+    Note: ``anti_spider.use_proxy`` / ``proxies`` are accepted in config for
+    forward compatibility but are **not implemented** (no proxy is applied).
     """
 
     def __init__(
@@ -246,18 +248,3 @@ class HttpSource(DataSource):
             headers = _merge_headers(headers, resolved)
 
         return headers
-
-    def _get_proxy(self, task_config: dict) -> str | None:
-        """Get next proxy from rotation pool (if enabled)."""
-        anti = task_config.get("anti_spider", {})
-        if not anti.get("enabled") or not anti.get("use_proxy"):
-            return None
-        proxies = anti.get("proxies", [])
-        if not proxies:
-            return None
-        # Simple round-robin via a static counter
-        if not hasattr(self, "_proxy_index"):
-            self._proxy_index = 0
-        proxy = proxies[self._proxy_index % len(proxies)]
-        self._proxy_index += 1
-        return proxy

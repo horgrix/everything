@@ -9,6 +9,7 @@ import pytest
 from crawler.pipeline import DataPipeline
 from crawler.parser import Parser
 from crawler.cleaner import Cleaner
+from crawler.sinks.api_sink import ApiSink
  
 
 RAW = '{"data": {"list": [{"app": {"id": 1}}, {"app": {"id": 2}}]}}'
@@ -64,7 +65,7 @@ def test_api_only_success(pipeline):
         captured["method"] = req.get_method()
         return _FakeResponse(json.dumps({"code": 0}))
 
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
         result = pipeline.process(RAW, _output_config(target_api=True), None, {})
 
     assert result.api_sent == 2
@@ -80,7 +81,7 @@ def test_api_only_failure(pipeline):
     def fake_urlopen(req, timeout):
         raise urllib.error.URLError("boom")
 
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
         result = pipeline.process(RAW, _output_config(target_api=True), None, {})
 
     assert result.api_sent == 0
@@ -94,7 +95,7 @@ def test_coexist_table_and_api(pipeline, db):
         captured["data"] = req.data
         return _FakeResponse(json.dumps({"code": 0}))
 
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
         result = pipeline.process(
             RAW, _output_config(target_table=True, target_api=True), db, {}
         )
@@ -119,65 +120,112 @@ def test_table_only_no_api(pipeline, db):
     assert result.api_failed == 0
 
 
-def test_collect_rows_mode_defers_api(pipeline):
-    """批量模式：传入 collect_rows 时不立即 POST，而是累积 rows。"""
-    collected = []
+def test_sink_buffers_until_flush():
+    """sink 缓冲：write 不立即 POST，flush 才一次性发送。
+
+    （原 pipeline.process(collect_rows=...) 延迟上传的等价断言。）
+    """
     calls = []
 
     def fake_urlopen(req, timeout):
         calls.append(req)
         return _FakeResponse(json.dumps({"code": 0}))
 
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
-        result = pipeline.process(
-            RAW, _output_config(target_api=True), None, {},
-            collect_rows=collected,
-        )
+    sink = ApiSink()
+    output_config = _output_config(target_api=True)
+    rows = [{"app_id": 1}, {"app_id": 2}]
 
-    # 批量模式下不立即 POST
-    assert calls == []
-    assert result.api_sent == 0
-    assert result.api_failed == 0
-    # rows 被累积，供后续统一 flush
-    assert collected == [{"app_id": 1}, {"app_id": 2}]
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
+        written = sink.write(rows, output_config, {}, None)
+        assert calls == []  # 未 flush 前不发请求
+        assert written.sent == 0
+        flushed = sink.flush(output_config, {}, None)
+
+    assert len(calls) == 1
+    assert flushed.sent == 2
+    assert flushed.failed == 0
+    body = json.loads(calls[0].data.decode("utf-8"))
+    assert body["rows"] == rows
 
 
-def test_flush_api_batches_rows(pipeline):
-    """flush_api 将累积的多行一次性 POST。"""
+def test_flush_batches_buffered_rows_once():
+    """多次 write 累积后 flush 合并成一次 POST。"""
     captured = {}
 
     def fake_urlopen(req, timeout):
         captured["data"] = req.data
         return _FakeResponse(json.dumps({"code": 0}))
 
+    sink = ApiSink()
+    output_config = _output_config(target_api=True)
     rows = [{"app_id": 1}, {"app_id": 2}, {"app_id": 3}]
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
-        result = pipeline.flush_api(
-            {"url": "https://horgrix.com/api/data/t/rows/batch"}, rows, {},
-        )
 
-    assert result.api_sent == 3
-    assert result.api_failed == 0
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
+        sink.write(rows[:1], output_config, {}, None)
+        sink.write(rows[1:], output_config, {}, None)
+        result = sink.flush(output_config, {}, None)
+
+    assert result.sent == 3
+    assert result.failed == 0
     body = json.loads(captured["data"].decode("utf-8"))
     assert body["rows"] == rows
 
 
-def test_flush_api_empty_rows(pipeline):
-    """flush_api 空 rows 不发起请求。"""
-    result = pipeline.flush_api({"url": "https://horgrix.com/x"}, [], {})
-    assert result.api_sent == 0
-    assert result.api_failed == 0
+def test_flush_empty_buffer_no_request():
+    """空缓冲 flush 不发起请求。"""
+    calls = []
+
+    def fake_urlopen(req, timeout):
+        calls.append(req)
+        return _FakeResponse(json.dumps({"code": 0}))
+
+    sink = ApiSink()
+    output_config = _output_config(target_api=True)
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
+        result = sink.flush(output_config, {}, None)
+
+    assert calls == []
+    assert result.sent == 0
+    assert result.failed == 0
 
 
-def test_flush_api_failure(pipeline):
-    """flush_api 上传失败时计入 api_failed。"""
+def test_flush_failure_counts_failed():
+    """上传失败时计入 failed。"""
     def fake_urlopen(req, timeout):
         raise urllib.error.URLError("boom")
 
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
-        result = pipeline.flush_api(
-            {"url": "https://horgrix.com/x"}, [{"app_id": 1}], {},
-        )
+    sink = ApiSink()
+    output_config = _output_config(target_api=True)
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
+        sink.write([{"app_id": 1}], output_config, {}, None)
+        result = sink.flush(output_config, {}, None)
 
-    assert result.api_sent == 0
-    assert result.api_failed == 1
+    assert result.sent == 0
+    assert result.failed == 1
+
+
+def test_batch_size_drains_full_batches():
+    """batch_size=2：write 满批立即 POST，flush 发剩余。"""
+    payloads = []
+
+    def fake_urlopen(req, timeout):
+        payloads.append(json.loads(req.data.decode("utf-8")))
+        return _FakeResponse(json.dumps({"code": 0}))
+
+    sink = ApiSink()
+    output_config = _output_config(target_api=True)
+    output_config["target_api"]["batch_size"] = 2
+
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
+        first = sink.write(
+            [{"app_id": 1}, {"app_id": 2}, {"app_id": 3}], output_config, {}, None
+        )
+        assert first.sent == 2          # 写时已发满批
+        assert len(payloads) == 1
+        rest = sink.flush(output_config, {}, None)
+
+    assert rest.sent == 1
+    assert [p["rows"] for p in payloads] == [
+        [{"app_id": 1}, {"app_id": 2}],
+        [{"app_id": 3}],
+    ]

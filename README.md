@@ -557,7 +557,7 @@ python main.py --api --db my_data.db --config my_tasks/
 | 浏览器模式 | 见文档 | `browser: {headless, wait_selector, actions: [click, scroll, wait], screenshot}` |
 | 动态参数 | 见文档 | `{today}`, `{yesterday}`, `{days_ago:N}`, `{timestamp}`, `{timestamp_ms}` |
 | 共享/分层参数 | 见文档 | 全局 `config/params.yaml` / 分组 `config/tasks/<group>/params.yaml` / 任务 `params:` 三层合并（dict 递归、list/标量上层覆盖） |
-| 环境变量 | 见文档 | 任意模板字符串中的 `${ENV_VAR}`（url / params / headers / db.query / sink url、path）；缺失保留原样并告警 |
+| 环境变量 | 见文档 | 任意模板字符串中的 `${ENV_VAR}`（url / params / headers / db.query / file.path / sink url、path）；缺失保留原样并告警 |
 | 查库参数 | 见文档 | `params: {x: {query, db, column, many, required, default}}`（缺省查本地 `crawler.db`，可查外部 MySQL） |
 | 多值迭代 | 见文档 | `iterate: [{var_name, values}]` 支持多变量笛卡尔积 |
 | 多表输出 | 见文档 | `outputs: [{target_table, table_schema, parser}]` |
@@ -571,7 +571,7 @@ python main.py --api --db my_data.db --config my_tasks/
 | SDK 映射 | 见文档 | `parser.type: sdk_mapping` + `fields[].source` |
 | 数据过滤 | 见文档 | `parser.filters: {tail, head, skip_lines, where}` |
 | 字段清洗 | 见文档 | `strip` / `to_number` / `to_datetime` / `regex_extract` / `regex_replace` / `truncate_*` / `number_expr_to_int` |
-| 反反爬 | 见文档 | `anti_spider: {enabled, delay, rotate_user_agent, proxies}` |
+| 反反爬 | 见文档 | `anti_spider: {enabled, delay, rotate_user_agent}`（`use_proxy`/`proxies` 尚未实现，配置被忽略） |
 | 重试 | 见文档 | `retry: {max_attempts, backoff_base}` 指数退避 |
 | SDK 调用 | 见文档 | `type: sdk` + `provider: {module, function, params}` |
 | CSV/Excel | 见文档 | `type: csv/excel` + `file: {format, path, encoding, sheet_name}` |

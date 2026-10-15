@@ -9,8 +9,8 @@ Design notes
   ``constraint`` are written by the user in native MySQL dialect and are
   spliced verbatim into ``CREATE TABLE``. This sink never translates
   SQLite types to MySQL (or vice versa).
-* ``password`` supports ``${ENV_VAR}`` substitution, reusing
-  :meth:`crawler.sources.db_source.DbSource._resolve_env`.
+* ``password`` supports ``${ENV_VAR}`` substitution via the shared
+  :func:`crawler.template.resolve_env_vars`.
 * Blocking pymysql calls are moved off the event loop by the base
   ``*_async`` facades (``asyncio.to_thread``).
 
@@ -46,7 +46,8 @@ import asyncio
 import logging
 
 from .base import OutputSink, SinkResult
-from ..sources.db_source import DbSource
+from ..mysql_client import build_mysql_connection
+from ..template import resolve_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -176,27 +177,13 @@ class MysqlSink(OutputSink):
         if conn is not None:
             return conn
 
-        try:
-            import pymysql
-        except ImportError:
-            raise ImportError(
-                "Writing MySQL requires pymysql:\n"
-                "  pip install pymysql"
-            )
-
         database = mysql_config.get("database", "")
-        if not database:
-            raise ValueError("mysql config missing 'database'")
-
-        conn = pymysql.connect(
-            host=mysql_config.get("host", "localhost"),
-            port=int(mysql_config.get("port", 3306) or 3306),
-            user=mysql_config.get("user", ""),
-            password=DbSource._resolve_env(mysql_config.get("password", "")),
-            database=database,
+        conn = build_mysql_connection(
+            {
+                **mysql_config,
+                "password": resolve_env_vars(mysql_config.get("password", "")),
+            },
             charset=mysql_config.get("charset", "utf8mb4"),
-            cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=10,
         )
         self._conns[cache_key] = conn
         logger.info(

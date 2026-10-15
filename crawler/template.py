@@ -38,6 +38,35 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# 匹配 ${ENV_VAR}
+_ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def resolve_env_vars(text: str | None) -> str | None:
+    """替换字符串中的 ``${ENV_VAR}`` —— 全仓唯一实现。
+
+    语义：命中环境变量则替换为它的值；环境变量缺失时**保留 ``${VAR}`` 原样**
+    并记录 warning（不静默替换为空串）。
+
+    注意：只处理 ``${...}``，普通 ``{xxx}`` 不会被当模板解析。
+    像数据库密码这种字段应调用本函数而**不要**调用
+    :meth:`URLTemplate.resolve`，以免密码里的 ``{xxx}`` 被误当模板。
+
+    非字符串输入（如 YAML 里的 ``null``）原样返回。
+    """
+    if not isinstance(text, str):
+        return text
+
+    def env_replacer(match: re.Match) -> str:
+        name = match.group(1)
+        value = os.environ.get(name)
+        if value is None:
+            logger.warning("环境变量未设置，保留原样: ${%s}", name)
+            return match.group(0)
+        return value
+
+    return _ENV_PATTERN.sub(env_replacer, text)
+
 
 class URLTemplate:
     """
@@ -52,22 +81,6 @@ class URLTemplate:
 
     # 匹配 {xxx} 或 {xxx:format} 或 {xxx:N} 或 {xxx:N:format}
     _VAR_PATTERN = re.compile(r"\{([a-z_0-9]+)(?::([^}]+))?\}", re.IGNORECASE)
-
-    # 匹配 ${ENV_VAR}
-    _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-
-    @staticmethod
-    def _resolve_env(template: str) -> str:
-        """把 ${ENV_VAR} 替换为环境变量值（缺失时保留原样并告警）。"""
-        def env_replacer(match: re.Match) -> str:
-            name = match.group(1)
-            value = os.environ.get(name)
-            if value is None:
-                logger.warning("环境变量未设置，保留原样: ${%s}", name)
-                return match.group(0)
-            return value
-
-        return URLTemplate._ENV_PATTERN.sub(env_replacer, template)
 
     @staticmethod
     def resolve(template: str, context: dict = None) -> str:
@@ -85,7 +98,7 @@ class URLTemplate:
             context = {}
 
         # 先替换 ${ENV}，再走 {var} 正则，避免 ${X} 被 {X} 规则误处理
-        template = URLTemplate._resolve_env(template)
+        template = resolve_env_vars(template)
 
         now = datetime.now()
 

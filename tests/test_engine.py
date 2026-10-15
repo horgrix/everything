@@ -8,6 +8,7 @@ import pytest
 
 from crawler.engine import CrawlerEngine
 from crawler.sources.base import SourceRegistry, DataSource
+from crawler.sinks.api_sink import ApiSink
 from storage.database import Database
 
 
@@ -61,7 +62,7 @@ def _run(engine, task, payloads):
 
     db = Database(":memory:")
     db.init_system_tables()
-    with mock.patch("crawler.pipeline.urllib.request.urlopen", fake_urlopen):
+    with mock.patch("crawler.sinks.api_sink.urllib.request.urlopen", fake_urlopen):
         return asyncio.run(engine.run(task, db))
 
 
@@ -72,17 +73,19 @@ def engine():
     return CrawlerEngine(registry)
 
 
-class TestGetBatchSize:
-    def test_default_zero(self, engine):
-        assert engine._get_batch_size({}) == 0
-        assert engine._get_batch_size({"target_api": {"url": "x"}}) == 0
+class TestApiSinkGetBatchSize:
+    """batch_size 解析由 ApiSink 负责（原 engine._get_batch_size 转发已删除）。"""
 
-    def test_positive(self, engine):
-        assert engine._get_batch_size({"target_api": {"batch_size": 200}}) == 200
+    def test_default_zero(self):
+        assert ApiSink.get_batch_size({}) == 0
+        assert ApiSink.get_batch_size({"target_api": {"url": "x"}}) == 0
 
-    def test_invalid(self, engine):
-        assert engine._get_batch_size({"target_api": {"batch_size": "abc"}}) == 0
-        assert engine._get_batch_size({"target_api": {"batch_size": -1}}) == -1
+    def test_positive(self):
+        assert ApiSink.get_batch_size({"target_api": {"batch_size": 200}}) == 200
+
+    def test_invalid(self):
+        assert ApiSink.get_batch_size({"target_api": {"batch_size": "abc"}}) == 0
+        assert ApiSink.get_batch_size({"target_api": {"batch_size": -1}}) == -1
 
 
 class TestBatchedUpload:

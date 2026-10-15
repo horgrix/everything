@@ -1,7 +1,7 @@
 """Tests for URLTemplate variable resolution."""
 
 import pytest
-from crawler.template import URLTemplate
+from crawler.template import URLTemplate, resolve_env_vars
 from datetime import datetime, timedelta
 
 
@@ -104,4 +104,34 @@ class TestEnvSubstitution:
         """普通 {var} 不受影响。"""
         monkeypatch.setenv("lower_var", "should_not_be_used")
         assert URLTemplate.resolve("{lower_var}") == "{lower_var}"
+
+
+class TestResolveEnvVars:
+    """resolve_env_vars —— 全仓唯一的 ${ENV} 解析实现。"""
+
+    def test_whole_string(self, monkeypatch):
+        monkeypatch.setenv("ONLY", "v")
+        assert resolve_env_vars("${ONLY}") == "v"
+
+    def test_substring_substitution(self, monkeypatch):
+        """不再是「仅整串匹配」：内嵌 ${ENV} 也会被替换。"""
+        monkeypatch.setenv("DB_PW", "s3cret")
+        assert resolve_env_vars("pre-${DB_PW}-post") == "pre-s3cret-post"
+
+    def test_missing_preserved_not_empty(self, monkeypatch):
+        """缺失环境变量保留原样，不静默变空串。"""
+        monkeypatch.delenv("NO_SUCH_ENV", raising=False)
+        assert (
+            resolve_env_vars("pre-${NO_SUCH_ENV}-post")
+            == "pre-${NO_SUCH_ENV}-post"
+        )
+
+    def test_does_not_parse_plain_braces(self):
+        """只做 ${ENV} 替换，普通 {xxx}（如密码内容）不被当模板。"""
+        assert resolve_env_vars("p{a}ss/$x/${MISSING_X}") == "p{a}ss/$x/${MISSING_X}"
+
+    def test_non_string_passthrough(self):
+        """非字符串（如 YAML null / 数字）原样返回，保持旧行为。"""
+        assert resolve_env_vars(None) is None
+        assert resolve_env_vars(12345) == 12345
 

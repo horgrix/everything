@@ -16,7 +16,6 @@ from .template import URLTemplate
 from .sources.base import SourceRegistry
 from .sinks import create_default_sink_registry
 from .sinks.base import SinkRegistry
-from .sinks.api_sink import ApiSink
 from .task_log import TaskLogHandler, resolve_log_config
 
 logger = logging.getLogger(__name__)
@@ -256,15 +255,3 @@ class CrawlerEngine:
     def _resolve_outputs(self, task_config: dict) -> list[dict]:
         """Return outputs config list (loader wraps single-output as [output])."""
         return task_config.get("outputs", [])
-
-    # ================================================================
-    # Batched upload compatibility shim (batching now lives in ApiSink)
-    # ================================================================
-
-    @staticmethod
-    def _get_batch_size(output_config: dict) -> int:
-        """Deprecated: batching moved into ApiSink/CrawlerEngine sinks.
-
-        Kept as a thin forwarder so existing callers/tests keep working.
-        """
-        return ApiSink.get_batch_size(output_config)

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from .schema import TaskConfig
+from .validation import TriggerTypeError, validate_trigger_type
 from crawler.sinks import SINK_KEYS
 
 logger = logging.getLogger(__name__)
@@ -132,29 +133,18 @@ class TaskLoader:
             or "unknown"
         )
 
-        # trigger_type 必填且必须与目录一致
-        trigger_type_in_config = config.get("trigger_type")
-        if not trigger_type_in_config:
-            logger.error("任务 '%s' 缺少 trigger_type 字段 (必填)", name)
-            return None
-        if trigger_type_in_config != trigger_type:
-            logger.error(
-                "任务 '%s' trigger_type='%s' 与目录位置（%s）不匹配",
-                name, trigger_type_in_config, trigger_type,
+        # trigger_type 必填、与目录一致，且 system/user 的 schedule 约束
+        # （规则唯一实现见 task_manager.validation）
+        try:
+            trigger_type_in_config = validate_trigger_type(
+                config, expected_trigger_type=trigger_type
             )
+        except TriggerTypeError as e:
+            logger.error("任务 '%s' 注册校验失败: %s", name, e)
             return None
 
-        # schedule 校验
-        schedule = config.get("schedule")
-        if trigger_type_in_config == "system":
-            if not schedule:
-                logger.error("任务 '%s' (system) 缺少 schedule 字段", name)
-                return None
-        else:  # user
-            if "schedule" in config:
-                logger.error("任务 '%s' (user) 不允许 schedule 字段", name)
-                return None
-            schedule = ""  # DB NOT NULL 约束用
+        # system 用真实 schedule；user 无 schedule，写空串满足 DB NOT NULL
+        schedule = config.get("schedule") if trigger_type_in_config == "system" else ""
 
         # 创建业务表
         for output_config in outputs_config:

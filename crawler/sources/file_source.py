@@ -9,9 +9,9 @@ Uses asyncio.to_thread() for synchronous file I/O.
 import asyncio
 import csv
 import logging
-from typing import Any
 
 from .base import DataSource
+from ..template import URLTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,16 @@ class FileSource(DataSource):
     # ---- DataSource interface ----
 
     async def fetch(self, task_config: dict, context: dict) -> list[dict]:
-        """Read file in a thread, return list[dict]."""
-        file_config = task_config.get("file", {})
+        """Read file in a thread, return list[dict].
+
+        ``file.path`` 支持与其它数据源一致的模板变量
+        （``${ENV}``、``{today}`` 等）。
+        """
+        file_config = dict(task_config.get("file", {}))
+        if file_config.get("path"):
+            file_config["path"] = URLTemplate.resolve(
+                file_config["path"], context=context or {}
+            )
         return await asyncio.to_thread(self._read_sync, file_config)
 
     # ---- Internal ----

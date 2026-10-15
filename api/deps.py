@@ -8,6 +8,11 @@ import yaml
 import logging
 from fastapi import Request, HTTPException
 
+from task_manager.validation import (
+    TriggerTypeError,
+    validate_trigger_type as _validate_trigger_type,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +34,6 @@ def get_scheduler(request: Request):
 # ── Task validation (shared between create and update) ──────────
 
 
-VALID_TRIGGER_TYPES = frozenset({"system", "user"})
 DEFAULT_GROUP = "default"
 
 
@@ -74,33 +78,12 @@ def validate_trigger_type(config: dict) -> str:
     """
     Validate trigger_type and schedule cross-constraints.
 
-    - trigger_type is required and must be 'system' or 'user'
-    - system tasks must have a schedule
-    - user tasks must NOT have a schedule
+    规则唯一实现在 :func:`task_manager.validation.validate_trigger_type`；
+    本函数仅把 :class:`TriggerTypeError` 转成 HTTPException(400)。
 
     Returns the validated trigger_type.
     """
-    trigger_type = config.get("trigger_type")
-    if not trigger_type:
-        raise HTTPException(status_code=400,
-                           detail="trigger_type 字段必填（system 或 user）")
-    if trigger_type not in VALID_TRIGGER_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"无效的 trigger_type: {trigger_type}"
-        )
-
-    if trigger_type == "system":
-        if not config.get("schedule"):
-            raise HTTPException(
-                status_code=400,
-                detail="system 类型任务必须包含 schedule 字段"
-            )
-    else:  # user
-        if "schedule" in config:
-            raise HTTPException(
-                status_code=400,
-                detail="user 类型任务不允许 schedule 字段"
-            )
-
-    return trigger_type
+    try:
+        return _validate_trigger_type(config)
+    except TriggerTypeError as e:
+        raise HTTPException(status_code=400, detail=str(e))

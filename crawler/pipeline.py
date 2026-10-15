@@ -11,17 +11,13 @@ Output is no longer hard-coded: the pipeline walks an
 """
 
 from dataclasses import dataclass
-import json  # noqa: F401  (kept so tests can patch crawler.pipeline.urllib)
 import logging
-import urllib.error  # noqa: F401
-import urllib.request  # noqa: F401
 from typing import Any
 
 from .parser import Parser
 from .cleaner import Cleaner
 from .sinks import create_default_sink_registry
 from .sinks.base import SinkRegistry, SinkResult
-from .sinks.api_sink import ApiSink
 
 logger = logging.getLogger(__name__)
 
@@ -85,20 +81,12 @@ class DataPipeline:
         output_config: dict,
         db,
         context: dict,
-        collect_rows: list | None = None,
     ) -> PipelineResult:
         """
         Process one output target against raw data (synchronous).
 
         Dispatches to every registered sink whose key is present, calling
-        ``prepare`` then ``write``, and finally ``flush`` (immediate mode).
-
-        Args:
-            collect_rows: **Deprecated.** Legacy batch mode kept for backward
-                compatibility: when a list is passed, cleaned rows for a
-                ``target_api`` output are appended to it instead of being
-                dispatched, so the caller can flush them later. The engine no
-                longer uses this (sinks buffer internally).
+        ``prepare`` then ``write`` + immediate ``flush`` (sync callers/tests).
 
         Returns:
             PipelineResult with inserted/updated/total/api_sent/api_failed.
@@ -106,24 +94,11 @@ class DataPipeline:
         result = PipelineResult()
         self._prepare_sinks(output_config, context, db)
 
-        cleaned = self._transform(raw_data, output_config, context)
+        cleaned = self._transform_and_count(raw_data, output_config, context, result)
         if cleaned is None:
             return result
 
-        result.total = len(cleaned)
-        if not cleaned:
-            return result
-
-        for sink in self._sinks.all():
-            if sink.key not in output_config:
-                continue
-            if collect_rows is not None and sink.key == "target_api":
-                collect_rows.extend(cleaned)
-                continue
-            result.add_sink_result(sink.write(cleaned, output_config, context, db))
-            if collect_rows is None:
-                result.add_sink_result(sink.flush(output_config, context, db))
-
+        self._write_to_hit_sinks(cleaned, output_config, context, db, result)
         return result
 
     # ================================================================
@@ -141,20 +116,11 @@ class DataPipeline:
         result = PipelineResult()
         await self._prepare_sinks_async(output_config, context, db)
 
-        cleaned = self._transform(raw_data, output_config, context)
+        cleaned = self._transform_and_count(raw_data, output_config, context, result)
         if cleaned is None:
             return result
 
-        result.total = len(cleaned)
-        if not cleaned:
-            return result
-
-        for sink in self._sinks.all():
-            if sink.key not in output_config:
-                continue
-            sink_result = await sink.write_async(cleaned, output_config, context, db)
-            result.add_sink_result(sink_result)
-
+        await self._write_to_hit_sinks_async(cleaned, output_config, context, db, result)
         return result
 
     # ================================================================
@@ -165,9 +131,7 @@ class DataPipeline:
         """Flush every sink hit by ``outputs`` (end of run)."""
         result = PipelineResult()
         for output_config in outputs:
-            for sink in self._sinks.all():
-                if sink.key not in output_config:
-                    continue
+            for sink in self._hit_sinks(output_config):
                 sink_result = await sink.flush_async(output_config, context, db)
                 result.add_sink_result(sink_result)
         return result
@@ -176,31 +140,9 @@ class DataPipeline:
         """Synchronous variant of :meth:`flush_outputs`."""
         result = PipelineResult()
         for output_config in outputs:
-            for sink in self._sinks.all():
-                if sink.key not in output_config:
-                    continue
+            for sink in self._hit_sinks(output_config):
                 result.add_sink_result(sink.flush(output_config, context, db))
         return result
-
-    def flush_api(
-        self,
-        target_api_config: dict,
-        rows: list[dict],
-        context: dict,
-    ) -> PipelineResult:
-        """POST accumulated rows to ``target_api`` in a single request.
-
-        Backward-compatible helper (the ApiSink now owns batching).
-        """
-        if not rows:
-            return PipelineResult()
-        if ApiSink._post_to_api(target_api_config, rows, context):
-            return PipelineResult(api_sent=len(rows))
-        return PipelineResult(api_failed=len(rows))
-
-    # Kept for backward compatibility with older callers/tests.
-    def _post_to_api(self, target_api_config: dict, rows: list[dict], context: dict) -> bool:
-        return ApiSink._post_to_api(target_api_config, rows, context)
 
     def close_sinks(self) -> None:
         """Release resources held by sinks (DB connections, ...)."""
@@ -220,6 +162,39 @@ class DataPipeline:
     async def _prepare_sinks_async(self, output_config: dict, context: dict, db) -> None:
         for sink in self._hit_sinks(output_config):
             await sink.prepare_async(output_config, context, db)
+
+    def _write_to_hit_sinks(
+        self, cleaned: list[dict], output_config: dict, context: dict, db,
+        result: PipelineResult,
+    ) -> None:
+        """对每个命中的 sink 依次 write + flush（同步立即模式）。"""
+        for sink in self._hit_sinks(output_config):
+            result.add_sink_result(sink.write(cleaned, output_config, context, db))
+            result.add_sink_result(sink.flush(output_config, context, db))
+
+    async def _write_to_hit_sinks_async(
+        self, cleaned: list[dict], output_config: dict, context: dict, db,
+        result: PipelineResult,
+    ) -> None:
+        """对每个命中的 sink 依次 write（异步；收尾由 flush_outputs 统一 flush）。"""
+        for sink in self._hit_sinks(output_config):
+            result.add_sink_result(
+                await sink.write_async(cleaned, output_config, context, db)
+            )
+
+    def _transform_and_count(
+        self, raw_data: Any, output_config: dict, context: dict,
+        result: PipelineResult,
+    ) -> list[dict] | None:
+        """parse → clean → inject source_url；写入 ``result.total``。
+
+        返回 ``None`` 表示没有可分发到 sink 的行（未解析出 / 空结果）。
+        """
+        cleaned = self._transform(raw_data, output_config, context)
+        if cleaned is None:
+            return None
+        result.total = len(cleaned)
+        return cleaned or None
 
     def _transform(self, raw_data: Any, output_config: dict, context: dict) -> list[dict] | None:
         """parse → clean → inject source_url. Returns None when no rows parsed."""

@@ -198,6 +198,29 @@ def test_missing_database_raises(monkeypatch):
         MysqlSink()._get_connection({"mysql": {"host": "h"}})
 
 
+def test_password_env_substring_and_missing(monkeypatch):
+    """密码复用唯一 ${ENV} 语义：子串替换；缺失保留原样，不静默变空。"""
+    captured = {}
+    fake_pymysql = types.SimpleNamespace(
+        connect=lambda **kw: (captured.update(kw) or _FakeConn()),
+        cursors=types.SimpleNamespace(DictCursor=object),
+    )
+    monkeypatch.setitem(sys.modules, "pymysql", fake_pymysql)
+    monkeypatch.setenv("WRITE_PW", "s3cret")
+
+    MysqlSink()._get_connection(
+        {"mysql": {"host": "h", "database": "d", "password": "pre-${WRITE_PW}"}}
+    )
+    assert captured["password"] == "pre-s3cret"
+
+    captured.clear()
+    monkeypatch.delenv("WRITE_PW", raising=False)
+    MysqlSink()._get_connection(
+        {"mysql": {"host": "h", "database": "d", "password": "pre-${WRITE_PW}"}}
+    )
+    assert captured["password"] == "pre-${WRITE_PW}"
+
+
 # ----------------------------------------------------------------------
 # prepare / write / flush with a fake connection
 # ----------------------------------------------------------------------

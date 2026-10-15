@@ -8,11 +8,10 @@ Uses asyncio.to_thread() for synchronous DB queries.
 
 import asyncio
 import logging
-import os
-from typing import Any
 
 from .base import DataSource
-from ..template import URLTemplate
+from ..mysql_client import build_mysql_connection
+from ..template import URLTemplate, resolve_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -84,35 +83,15 @@ class DbSource(DataSource):
 
     @staticmethod
     def _read_mysql(db_config: dict) -> list[dict]:
-        try:
-            import pymysql
-        except ImportError:
-            raise ImportError(
-                "Reading MySQL requires pymysql:\n"
-                "  pip install pymysql"
-            )
-
         host = db_config.get("host", "localhost")
-        port = int(db_config.get("port", 3306))
-        user = db_config.get("user", "")
-        password = DbSource._resolve_env(db_config.get("password", ""))
+        port = int(db_config.get("port", 3306) or 3306)
         database = db_config.get("database", "")
         query = db_config.get("query", "")
 
-        if not database:
-            raise ValueError("MySQL config missing 'database'")
-
-        conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-            read_timeout=30,
-            connect_timeout=10,
-        )
+        # 密码仅做 ${ENV} 替换（唯一实现），不解析 {xxx} 模板
+        conn_config = dict(db_config)
+        conn_config["password"] = resolve_env_vars(db_config.get("password", ""))
+        conn = build_mysql_connection(conn_config, read_timeout=30)
 
         try:
             with conn.cursor() as cursor:
@@ -123,11 +102,3 @@ class DbSource(DataSource):
 
         logger.info("MySQL query: %d rows (%s:%s/%s)", len(rows), host, port, database)
         return rows
-
-    @staticmethod
-    def _resolve_env(value: str) -> str:
-        """Resolve ${ENV_VAR} references in strings."""
-        if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
-            env_var = value[2:-1]
-            return os.environ.get(env_var, "")
-        return value

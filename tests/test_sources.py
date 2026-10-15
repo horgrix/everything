@@ -1,6 +1,8 @@
 """Tests for the data source abstraction layer."""
 
 import asyncio
+import sys
+import types
 from datetime import datetime
 
 import pytest
@@ -105,3 +107,95 @@ class TestDbSourceQueryTemplate:
             )
         )
         assert captured["query"] == "SELECT CN"
+
+
+class TestFileSourcePathTemplate:
+    """file.path 与其它数据源一致，支持模板变量（含 ${ENV}）。"""
+
+    def test_path_resolves_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DATA_DIR", str(tmp_path))
+        (tmp_path / "in.csv").write_text("id,name\n1,a\n", encoding="utf-8")
+
+        source = FileSource()
+        rows = asyncio.run(
+            source.fetch(
+                {
+                    "type": "csv",
+                    "file": {"format": "csv", "path": "${DATA_DIR}/in.csv"},
+                },
+                {"task_name": "t"},
+            )
+        )
+        assert rows == [{"id": "1", "name": "a"}]
+
+    def test_path_resolves_date_var(self, tmp_path):
+        today = datetime.now().strftime("%Y-%m-%d")
+        (tmp_path / f"{today}.csv").write_text("id\n7\n", encoding="utf-8")
+
+        source = FileSource()
+        rows = asyncio.run(
+            source.fetch(
+                {
+                    "type": "csv",
+                    "file": {"format": "csv", "path": f"{tmp_path}/{{today}}.csv"},
+                },
+                {},
+            )
+        )
+        assert rows == [{"id": "7"}]
+
+
+class TestDbSourceMysqlPasswordEnv:
+    """MySQL 密码复用唯一的 ${ENV} 解析（子串替换，缺失保留原样）。"""
+
+    @staticmethod
+    def _fake_pymysql(captured):
+        class _Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, query):
+                captured["query"] = query
+
+            def fetchall(self):
+                return [{"a": 1}]
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+            def close(self):
+                captured["closed"] = True
+
+        return types.SimpleNamespace(
+            connect=lambda **kw: (captured.update(kw) or _Conn()),
+            cursors=types.SimpleNamespace(DictCursor=object),
+        )
+
+    def test_password_env_substring(self, monkeypatch):
+        captured = {}
+        monkeypatch.setitem(sys.modules, "pymysql", self._fake_pymysql(captured))
+        monkeypatch.setenv("READ_PW", "pw")
+
+        rows = DbSource._read_mysql(
+            {"host": "h", "database": "d", "password": "x-${READ_PW}",
+             "query": "SELECT 1"}
+        )
+        assert rows == [{"a": 1}]
+        assert captured["password"] == "x-pw"
+        assert captured["closed"] is True
+
+    def test_missing_password_env_preserved(self, monkeypatch):
+        captured = {}
+        monkeypatch.setitem(sys.modules, "pymysql", self._fake_pymysql(captured))
+        monkeypatch.delenv("READ_PW", raising=False)
+
+        DbSource._read_mysql(
+            {"host": "h", "database": "d", "password": "${READ_PW}",
+             "query": "SELECT 1"}
+        )
+        # 不再静默变空串
+        assert captured["password"] == "${READ_PW}"
