@@ -1,6 +1,32 @@
 # 爬虫系统变更日志
 
-> 版本：v1.6 | 更新日期：2026-10-11
+> 版本：v1.7 | 更新日期：2026-10-14
+
+---
+
+## v1.7 动态参数增强：共享/分层参数 + 通用 `${ENV}` + 查库参数（2026-10-14 新增）
+
+### 共享/分层参数（P1）
+
+- 新增 `crawler/params.py`：`ParamResolver` 按「全局 `config/params.yaml` → 分组 `config/tasks/<group>/params.yaml`（group 取任务 `_group`，即目录名）→ 任务 YAML 顶层 `params:`」三层合并，优先级低 → 高覆盖。
+- 合并规则：同 key 两边都是 dict 时递归合并（`deep_merge`）；list / 标量由上层直接覆盖。
+- 每次 `resolve()` 都重新读文件，改 `params.yaml` **无需重启进程**即生效；分组文件缺失 / 无 `_group` 时静默跳过。
+- `task_manager/loader.py` 扫描时跳过 `params.yaml`，不将其当作任务配置加载。
+
+### 通用 `${ENV_VAR}`（P2）
+
+- `crawler/template.py` 的 `URLTemplate.resolve` 新增 `${ENV_VAR}` 替换：凡走模板解析的字符串均生效（`url`、`params` 值、`headers` 静态值、parser `value`、`db.query`、sink 的 `url`/`path`）。
+- **缺失的环境变量保留 `${VAR}` 原样并写 warning**（不再静默变空串）；`${ENV}` 先于 `{var}` 替换。
+
+### 查库参数（P4）
+
+- `crawler/params.py` 新增查库参数：顶层 param 值为含 `query` 键的 dict → 查库取值。`db` 缺省 `{type: sqlite, path: crawler.db}`（本地），也可写 `{type: mysql, host/port/user/password/database}` 查外部库；复用 `DbSource`（`password` 支持 `${ENV}`）。
+- 取值：默认第一行第一列标量；`column: <列名>` 指定列；`many: true` 返回该列所有行的 list（未指定 column 时取第一列）。
+- 兜底优先级：`required: true`（失败 / 空结果 / 取值失败时抛错）> `default`（告警后用其值）> 都没有则置 `None` + 告警。
+- `query` 串支持 `${ENV}` / `{today}` 等模板变量，可引用已解析的普通参数；执行走 `asyncio.to_thread`（不阻塞事件循环），`ParamResolver.resolve` 为 `async`。
+- 限制：查库参数之间不能互相引用；仅顶层含 `query` 的 dict 才查库；SQL 由模板拼接、无占位符绑定（仅适用可信配置）；`many: true` 遇空结果仍走兜底。
+
+**受影响文件**：`crawler/params.py`（新增）、`crawler/template.py`、`crawler/engine.py`、`app.py`、`api/routes/tasks.py`、`task_manager/loader.py`、`docs/task_config_guide.md`（v2.3 → v2.4）、`README.md`
 
 ---
 

@@ -204,9 +204,11 @@ everything/
 │
 ├── config/
 │   ├── data/                        # 离线 CSV 源数据
+│   ├── params.yaml                  # 全局共享参数（可选，所有任务共享）
 │   └── tasks/
 │       ├── _example_all_features.yaml     # 完整功能示例
 │       └── <group>/                 # 分组（目录名 = group）
+│           ├── params.yaml          # 分组共享参数（可选，本分组任务共享）
 │           ├── *.yaml               # system 定时任务（组根）
 │           ├── manual/*.yaml        # user 手动任务
 │           ├── script/              # 脚本目录（占位）
@@ -324,7 +326,8 @@ class DataPipeline:
 | `{timestamp}` | `1753766400` | Unix 秒时间戳 |
 | `{timestamp_ms}` | `1753766400000` | Unix 毫秒时间戳 |
 | `{task_name}` | 当前任务名 | |
-| `{xxx}` | 自定义 | 从 context / params / iterate 变量中查找 |
+| `{xxx}` | 自定义 | 从 context / params / iterate 变量中查找（params 现含 全局/分组/任务 三层）|
+| `${ENV_VAR}` | 环境变量值 | 环境变量；缺失时保留 `${VAR}` 原样并告警 |
 
 ---
 
@@ -553,6 +556,9 @@ python main.py --api --db my_data.db --config my_tasks/
 | 组级日志 | 见文档 | `logging` 开关 → `logs/<group>/` 覆盖式（data/runtime/error） |
 | 浏览器模式 | 见文档 | `browser: {headless, wait_selector, actions: [click, scroll, wait], screenshot}` |
 | 动态参数 | 见文档 | `{today}`, `{yesterday}`, `{days_ago:N}`, `{timestamp}`, `{timestamp_ms}` |
+| 共享/分层参数 | 见文档 | 全局 `config/params.yaml` / 分组 `config/tasks/<group>/params.yaml` / 任务 `params:` 三层合并（dict 递归、list/标量上层覆盖） |
+| 环境变量 | 见文档 | 任意模板字符串中的 `${ENV_VAR}`（url / params / headers / db.query / sink url、path）；缺失保留原样并告警 |
+| 查库参数 | 见文档 | `params: {x: {query, db, column, many, required, default}}`（缺省查本地 `crawler.db`，可查外部 MySQL） |
 | 多值迭代 | 见文档 | `iterate: [{var_name, values}]` 支持多变量笛卡尔积 |
 | 多表输出 | 见文档 | `outputs: [{target_table, table_schema, parser}]` |
 | 远程 MySQL 输出 | 见文档 | `outputs: [{target_mysql, mysql: {host, port, user, password, database}, table_schema, parser}]`（原生 MySQL 方言，不做类型转换）|

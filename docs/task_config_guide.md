@@ -1,11 +1,12 @@
 # 爬虫任务配置文件说明文档
 
-> 版本：v2.3 | 最后更新：2026-10-09
+> 版本：v2.4 | 最后更新：2026-10-14
 >
 > 对应代码版本：重构后（注册表模式 Cleaner/Parser + 统一 DataSource 抽象层 + outputs 多表架构）
 > v2.1 新增：`target_api` 批量上传（`batch_size` 分批）、HTTP 连接池复用
 > v2.2 新增：字段 `when` 条件分支（运行时动态选择解析路径）
 > v2.3 新增：任务分组（group 由目录名推导）+ 组级文件日志（logging → logs/<group>/）
+> v2.4 新增：动态参数增强——共享/分层参数（全局/分组/任务 `params.yaml`）、通用 `${ENV_VAR}` 替换、查库参数（`query`/`db`/`column`/`many`/`required`/`default`）
 
 ---
 
@@ -50,6 +51,13 @@
 - [八、字段清洗规则](#八字段清洗规则)
 - [九、字段级过滤 where](#九字段级过滤-where)
 - [十、动态参数模板](#十动态参数模板)
+  - [时间类变量](#时间类变量)
+  - [自定义变量](#自定义变量)
+  - [使用场景](#使用场景)
+  - [共享/分层参数](#共享分层参数)
+  - [环境变量 ${ENV_VAR}](#环境变量-env_var)
+  - [查库参数](#查库参数)
+  - [模板变量在 context 中的全量传递](#模板变量在-context-中的全量传递)
 - [十一、iterate — 多值迭代](#十一iterate--多值迭代)
 - [十二、浏览器动态页面 browser](#十二浏览器动态页面-browser)
 - [十三、数据源专项配置](#十三数据源专项配置)
@@ -432,9 +440,28 @@ encoding: 'big5hkscs'
 
 | 类型 | 必填 | 说明 |
 |------|------|------|
-| `dict` | 否 | 全局参数字典，注入到模板变量上下文 |
+| `dict` | 否 | 参数字典，注入到模板变量上下文 |
 
-`params` 中定义的键值对会自动成为模板变量，可在 URL 和 parser 的 `value` 占位符中使用。
+`params` 中定义的键值对会成为模板变量，可在 URL、`headers`、parser 的 `value`、`db.query`、输出 sink 的 `url`/`path` 等任意模板字符串中用 `{param_name}` 引用。
+
+**参数现在有 3 层来源**（优先级低 → 高，后者覆盖前者）：
+
+| 层级 | 文件位置 | 说明 |
+|------|----------|------|
+| 全局 | `config/params.yaml`（即 `config/tasks` 的上一级） | 所有任务共享 |
+| 分组 | `config/tasks/<group>/params.yaml` | 该分组所有任务共享（`<group>` 由任务所在目录名推导） |
+| 任务 | 任务 YAML 顶层 `params:` | 仅当前任务 |
+
+每次任务运行都会重新读取这些文件，因此修改 `params.yaml` 无需重启进程。任务层 `params:` 只是三层中的最高层，写法与旧版完全兼容。
+
+每个参数的值有 **4 种写法**：
+
+1. **字面量**：`region: cn`
+2. **模板**：`stat_date: "{yesterday}"`
+3. **环境变量**：`api_key: "${TAPTAP_KEY}"`
+4. **查库取值**：值为含 `query` 键的 dict，如 `active_ss: {query: "SELECT MAX(ss) FROM season"}`
+
+最基础的写法（仅任务层，等价于旧版）：
 
 ```yaml
 params:
@@ -443,6 +470,8 @@ params:
 
 url: "https://api.example.com/data?key={api_key}&source={source}"
 ```
+
+三层的合并优先级、`${ENV_VAR}` 的生效范围与缺失行为、查库参数的完整语义，详见 **[十、动态参数模板](#十动态参数模板)**。
 
 ### headers — 请求头
 
@@ -1352,6 +1381,229 @@ url: "https://api.example.com/report?date={today:%Y%m%d}"
 url: "https://store.steampowered.com/charts/topselling/{region}/{last_week:2}"
 ```
 
+### 共享/分层参数
+
+参数可以写在三个地方，运行时按「全局 → 分组 → 任务」顺序合并，**低优先级先加载、高优先级后覆盖**：
+
+| 层级 | 文件位置 | 说明 |
+|------|----------|------|
+| 全局 | `config/params.yaml`（即 `config/tasks` 的上一级） | 所有任务共享 |
+| 分组 | `config/tasks/<group>/params.yaml` | 该分组所有任务共享（`<group>` 由目录名推导） |
+| 任务 | 任务 YAML 顶层 `params:` | 仅当前任务，优先级最高 |
+
+合并规则：
+
+- 同一个 key 两边都是 **dict** → **递归合并**（深一层继续按同一规则处理）；
+- 其它情况（**list、标量**）→ 由上层直接**覆盖**（不会拼接 / 合并）；
+- 每次任务运行都**重新读取**这三个文件，所以改 `params.yaml` 无需重启进程；
+- 系统扫描任务时会**跳过 `params.yaml`**，它不会被当成任务配置加载；
+- 分组 `params.yaml` 不存在、或任务没有 `_group` 时静默跳过，不报错。
+
+**完整示例：同一个 key 在全局/分组/任务三层，被最上层覆盖**
+
+全局 `config/params.yaml`：
+
+```yaml
+base_url: "https://api.example.com"
+timeout: 30
+region: "global"
+headers:
+  x-client: "crawler"
+  x-region: "global"
+```
+
+分组 `config/tasks/taptap/params.yaml`（目录名 `taptap` 即 group）：
+
+```yaml
+region: "cn"
+app_id: "123456"
+headers:
+  x-region: "cn"        # dict 递归合并：只覆盖 x-region
+```
+
+任务 `config/tasks/taptap/manual/layered_demo.yaml`：
+
+```yaml
+name: "分层参数示例"
+type: api
+trigger_type: user
+method: GET
+params:
+  region: "hk"          # 覆盖全局/分组的同名标量
+  headers:
+    x-client: "task"    # 覆盖全局的 x-client，x-region 保留分组的 cn
+url: "{base_url}/v1/items?region={region}&app={app_id}"
+```
+
+运行时的最终合并结果（`url` 渲染前实际拿到的那份参数）：
+
+```yaml
+base_url: "https://api.example.com"   # 全局
+region: "hk"                          # 任务覆盖（global → cn → hk）
+timeout: 30                           # 全局保留（无人覆盖）
+app_id: "123456"                      # 分组新增
+headers:
+  x-client: "task"                    # 任务覆盖
+  x-region: "cn"                      # 分组覆盖（dict 递归合并，global 值被 cn 替换）
+```
+
+`url` 渲染结果：
+
+```text
+https://api.example.com/v1/items?region=hk&app=123456
+```
+
+### 环境变量 ${ENV_VAR}
+
+`URLTemplate.resolve` 已内置 `${ENV_VAR}` 替换，语法是 `${变量名}`（变量名需符合 `[A-Za-z_][A-Za-z0-9_]*`）。替换在 `{var}` 正则之前执行，所以 `${X}` 不会被 `{X}` 规则误处理。
+
+因为**任何走模板解析的字符串**都会经过它，所以下列位置全都支持 `${ENV_VAR}`：
+
+- 任务的 `url`
+- `params` 的普通参数值（含嵌套 dict / list 中的字符串）
+- `headers` 的静态字符串值
+- parser 字段的 `value`
+- `db.query`（包括 `type: db` 数据源与查库参数的 `query`）
+- 输出 sink 的 `url`（`target_api`）、`path`（`target_file`）
+
+**缺失行为**：环境变量未设置时，**保留 `${VAR}` 原样并写 warning 日志**（不会静默替换为空串），方便定位配置漏配。
+
+```yaml
+name: "环境变量示例"
+type: api
+trigger_type: user
+method: GET
+params:
+  api_key: "${TAPTAP_KEY}"                 # 普通参数里的环境变量
+headers:
+  authorization: "Bearer ${API_TOKEN}"     # header 静态值里的环境变量
+url: "https://api.example.com/data?key=${TAPTAP_KEY}&date={today}"
+outputs:
+  - target_file:
+      path: "storage/${DATA_ENV}/export_{today}.csv"
+      format: csv
+      mode: overwrite
+    parser:
+      type: json
+      fields:
+        - name: app_id
+          path: "id"
+```
+
+查外部 MySQL 时，密码也常用 `${ENV}`：
+
+```yaml
+type: db
+db:
+  type: mysql
+  host: "10.0.0.5"
+  port: 3306
+  user: "reader"
+  password: "${MYSQL_PWD}"
+  database: "report"
+  query: "SELECT app_id, name FROM apps WHERE stat_date = '{yesterday}'"
+```
+
+**已知边界**：`type: file` 数据源的本地文件路径（`file.path`）**不经过模板解析**，`${ENV}` 和 `{today}` 在那里都不会被替换；请直接写死路径。注意与输出侧区分：`outputs[].target_file.path` 是走模板解析的（如上例）。
+
+### 查库参数
+
+**识别规则**：任务合并后顶层某个参数的值是 **dict 且含 `query` 键** → 视为查库参数（P4）。不含 `query` 的 dict 仍按普通嵌套参数处理，行为不变。
+
+**db 配置**：
+
+- 缺省（不写 `db`）→ `{type: sqlite, path: crawler.db}`，即查当前工作目录下的本地 `crawler.db`；
+- 也可显式写外部库，字段与 `type: db` 数据源一致：`db: {type: mysql, host, port, user, password, database}`，`password` 支持 `${ENV}`（复用 `DbSource`）。MySQL 连接固定使用 `utf8mb4` 字符集 + `DictCursor`，读/连接超时 30s/10s。
+
+**取值方式**：
+
+| 配置 | 行为 |
+|------|------|
+| 默认 | 取**第一行第一列**的标量 |
+| `column: <列名>` | 取指定列（列不存在视为取值失败） |
+| `many: true` | 返回该列**所有行**组成的 list；未指定 `column` 时用第一列 |
+
+**兜底优先级**：
+
+1. `required: true` → 查询失败 / 结果为空 / 取值失败时**直接抛错**（任务失败）；
+2. 否则若有 `default` → 使用 `default`（支持模板与 `${ENV}`）并写 warning；
+3. 都没有 → 置为 `None` 并写 warning。
+
+**`query` 串的模板能力**：`query` 会先做模板解析再执行，支持 `${ENV}`、`{today}`/`{yesterday}` 等时间变量，也可引用**已解析的普通参数**。
+
+**执行方式**：查库通过 `asyncio.to_thread` 在子线程执行，不阻塞事件循环；`ParamResolver.resolve` 是 `async`。
+
+**示例一：本地 sqlite 简写（不写 db，取第一行第一列标量）**
+
+```yaml
+params:
+  latest_ss:
+    query: "SELECT MAX(ss) FROM torchlight_season"   # 缺省查本地 crawler.db
+
+url: "https://api.example.com/season?ss={latest_ss}"
+```
+
+**示例二：外部 MySQL 完整写法 + 指定列 + required**
+
+```yaml
+params:
+  season_flag:
+    query: "SELECT flag FROM cfg WHERE env = '${DATA_ENV}' AND day = '{today}'"
+    db:
+      type: mysql
+      host: "10.0.0.5"
+      port: 3306
+      user: "reader"
+      password: "${MYSQL_PWD}"
+      database: "report"
+    column: "flag"
+    required: true        # 查不到直接让任务失败
+
+url: "https://api.example.com/items?flag={season_flag}"
+```
+
+**示例三：取列表（many）**
+
+```yaml
+params:
+  active_ids:
+    query: "SELECT app_id FROM active_apps WHERE stat_date = '{yesterday}' ORDER BY app_id"
+    db:
+      type: sqlite
+      path: "storage/active.db"
+    column: "app_id"
+    many: true            # → ["a1", "a2", "a3"]
+
+url: "https://api.example.com/list?env=${DATA_ENV}"
+```
+
+`many: true` 的结果在 context 中是一个真正的 **Python list**。注意 `{var}` 替换会对值调用 `str()`，把整个 list 直接写进 URL 字符串会得到 Python 列表字面量（如 `['a1', 'a2']`），因此它更适合放在需要列表值的嵌套参数中，或供下游逻辑读取 context 时使用。
+
+**示例四：兜底（default / 无 default 置 None）**
+
+```yaml
+params:
+  # 查不到时用 default，仅告警不失败
+  banner_id:
+    query: "SELECT banner_id FROM config WHERE k = 'home_banner'"
+    db:
+      type: sqlite
+      path: "crawler.db"
+    default: "0"
+
+  # 既无 default 也非 required：查不到/失败时置为 None（告警）
+  optional_tag:
+    query: "SELECT tag FROM tags ORDER BY id DESC LIMIT 1"
+    column: "tag"
+```
+
+**限制与注意事项**：
+
+- 查库参数之间**不能互相引用**（执行时另一个查库参数的值还不可见）；
+- 只有**顶层**含 `query` 的 dict 才查库，嵌套 dict 不会触发查库；
+- SQL 由模板直接拼接，**没有占位符绑定**，仅适用于可信配置，不要把外部输入拼进 `query`；
+- `many: true` 遇到**空结果**时**仍走兜底**（`required` → 抛错；有 `default` → 用 `default`；否则 `None`），不会返回空 list。
+
 ### 模板变量在 context 中的全量传递
 
 系统对 context 中**所有字符串值**做递归模板解析。这意味着你在 `url`、`value`、`params` 甚至 `db.query` 中都可以使用变量。`iterate` 的 var_name、`params`、`element_selector` 的 var_name 和 `task_name` 都会进入 context 池。
@@ -2195,3 +2447,4 @@ encoding: 'big5hkscs'
 | `{last_week:N:fmt}` | N=1~7, fmt=格式 | `{last_week:5:%Y%m%d}` | 上周五的日期 |
 | `{task_name}` | — | `{task_name}` | 当前任务名称 |
 | `{xxx}` | 自定义变量 | `{region}` | 从 context 查找 |
+| `${ENV_VAR}` | 环境变量名 | `${TAPTAP_KEY}` | 环境变量值；**缺失时保留 `${VAR}` 原样并告警** |
