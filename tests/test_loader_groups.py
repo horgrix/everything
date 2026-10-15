@@ -92,3 +92,15 @@ def test_group_recorded_in_db(db, tmp_path):
         'SELECT "group" FROM crawl_tasks WHERE task_name=?', ("sys_a",)
     ).fetchone()
     assert row["group"] == "g1"
+
+
+def test_group_params_yaml_is_skipped(db, tmp_path):
+    """分组 params.yaml 被跳过，不会被当成缺少 name/outputs 的任务。"""
+    root = tmp_path / "tasks"
+    _write(root / "g1" / "params.yaml", "region: cn\nnested:\n  a: 1\n")
+    _write(root / "g1" / "sys.yaml", _system_task("sys_a", "t_sys_a"))
+
+    loader = TaskLoader(str(root), db)
+    tasks = loader.load_all()
+
+    assert [t["name"] for t in tasks] == ["sys_a"]

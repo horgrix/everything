@@ -69,6 +69,9 @@ class TaskLoader:
 
     def _load_file(self, filepath: Path, trigger_type: str, group: str) -> list[dict]:
         """加载单个 YAML 文件（可能包含多个任务）"""
+        # params.yaml 是共享参数文件，不是任务配置，扫描时跳过
+        if filepath.name == "params.yaml":
+            return []
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)

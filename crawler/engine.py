@@ -10,6 +10,7 @@ import asyncio
 import logging
 import itertools
 from .dedup import URLDedup
+from .params import ParamResolver
 from .pipeline import DataPipeline, PipelineResult
 from .template import URLTemplate
 from .sources.base import SourceRegistry
@@ -42,7 +43,8 @@ class CrawlerEngine:
     """
 
     def __init__(self, sources: SourceRegistry = None, pipeline: DataPipeline = None,
-                 log_dir: str = "logs", sinks: SinkRegistry = None):
+                 log_dir: str = "logs", sinks: SinkRegistry = None,
+                 config_dir: str = "config/tasks"):
         self._sources = sources or SourceRegistry()
         if pipeline is None:
             pipeline = DataPipeline(
@@ -51,6 +53,7 @@ class CrawlerEngine:
         self._pipeline = pipeline
         self._url_dedup = URLDedup(cache_ttl_seconds=300)
         self._log_dir = log_dir
+        self._params = ParamResolver(config_dir)
 
     async def close(self) -> None:
         """关闭所有数据源持有的资源（如 HTTP 连接池）。"""
@@ -69,9 +72,9 @@ class CrawlerEngine:
         if url_context is None:
             url_context = {}
 
-        # Inject global params into base context
+        # Inject merged params (global < group < task) into base context
         base_context = dict(url_context)
-        params = task_config.get("params", {})
+        params = await self._params.resolve(task_config, extra_context=url_context)
         if params:
             base_context.update(params)
 

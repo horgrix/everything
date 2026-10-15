@@ -26,10 +26,17 @@
   自定义变量:
     {task_name}              → 当前任务名
     {xxx}                    → 从 context 或 params 中查找
+
+  环境变量:
+    ${ENV_VAR}               → 环境变量值（缺失时保留原样并告警）
 """
 
+import logging
+import os
 import re
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class URLTemplate:
@@ -46,6 +53,22 @@ class URLTemplate:
     # 匹配 {xxx} 或 {xxx:format} 或 {xxx:N} 或 {xxx:N:format}
     _VAR_PATTERN = re.compile(r"\{([a-z_0-9]+)(?::([^}]+))?\}", re.IGNORECASE)
 
+    # 匹配 ${ENV_VAR}
+    _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+    @staticmethod
+    def _resolve_env(template: str) -> str:
+        """把 ${ENV_VAR} 替换为环境变量值（缺失时保留原样并告警）。"""
+        def env_replacer(match: re.Match) -> str:
+            name = match.group(1)
+            value = os.environ.get(name)
+            if value is None:
+                logger.warning("环境变量未设置，保留原样: ${%s}", name)
+                return match.group(0)
+            return value
+
+        return URLTemplate._ENV_PATTERN.sub(env_replacer, template)
+
     @staticmethod
     def resolve(template: str, context: dict = None) -> str:
         """
@@ -60,6 +83,9 @@ class URLTemplate:
         """
         if context is None:
             context = {}
+
+        # 先替换 ${ENV}，再走 {var} 正则，避免 ${X} 被 {X} 规则误处理
+        template = URLTemplate._resolve_env(template)
 
         now = datetime.now()
 

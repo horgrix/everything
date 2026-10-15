@@ -63,3 +63,45 @@ class TestURLTemplate:
         """Resolve without context dict."""
         result = URLTemplate.resolve("{today}")
         assert result == datetime.now().strftime("%Y-%m-%d")
+
+
+class TestEnvSubstitution:
+    """${ENV_VAR} 替换（先于 {var} 正则，缺失时保留原样）。"""
+
+    def test_env_var_substituted(self, monkeypatch):
+        monkeypatch.setenv("TAPTAP_KEY", "abc123")
+        assert URLTemplate.resolve("${TAPTAP_KEY}") == "abc123"
+
+    def test_env_var_in_url(self, monkeypatch):
+        monkeypatch.setenv("API_HOST", "example.com")
+        result = URLTemplate.resolve(
+            "https://${API_HOST}/data?date={today}",
+            context={"today": "IGNORED"},
+        )
+        expected = f"https://example.com/data?date={datetime.now().strftime('%Y-%m-%d')}"
+        assert result == expected
+
+    def test_env_and_template_do_not_interfere(self, monkeypatch):
+        monkeypatch.setenv("MY_PATH", "v1")
+        result = URLTemplate.resolve(
+            "${MY_PATH}/{region}/${MY_PATH}", context={"region": "cn"}
+        )
+        assert result == "v1/cn/v1"
+
+    def test_missing_env_preserved(self, monkeypatch):
+        monkeypatch.delenv("MISSING_ENV_VAR", raising=False)
+        result = URLTemplate.resolve("a-${MISSING_ENV_VAR}-b")
+        assert result == "a-${MISSING_ENV_VAR}-b"
+
+    def test_missing_env_does_not_break_other_vars(self, monkeypatch):
+        monkeypatch.delenv("MISSING_ENV_VAR", raising=False)
+        result = URLTemplate.resolve(
+            "${MISSING_ENV_VAR}/{region}", context={"region": "cn"}
+        )
+        assert result == "${MISSING_ENV_VAR}/cn"
+
+    def test_env_ignored_when_lowercase_pattern(self, monkeypatch):
+        """普通 {var} 不受影响。"""
+        monkeypatch.setenv("lower_var", "should_not_be_used")
+        assert URLTemplate.resolve("{lower_var}") == "{lower_var}"
+

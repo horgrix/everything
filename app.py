@@ -68,7 +68,7 @@ def create_app(
     pipeline = DataPipeline(parser=Parser(), cleaner=Cleaner(), sinks=sinks)
 
     # Engine
-    engine = CrawlerEngine(sources=sources, pipeline=pipeline)
+    engine = CrawlerEngine(sources=sources, pipeline=pipeline, config_dir=config_dir)
 
     # Task loader
     loader = TaskLoader(config_dir, db)

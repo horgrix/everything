@@ -180,6 +180,7 @@ async def trigger_run(request: Request, task_name: str):
         engine = CrawlerEngine(
             sources=create_default_registry(),
             sinks=create_default_sink_registry(),
+            config_dir=_get_config_dir(request),
         )
 
     try:
