@@ -1,6 +1,6 @@
 name: "DWS_火炬之光下载数赛季日计算任务"
 depends_on:
-  - "DWS_火炬之光下载数每天计算任务"
+  - "DWS_火炬之光下载数每天计算任务Fix"
 type: db
 db:
   type: sqlite
@@ -29,8 +29,9 @@ db:
       iphone_cn_download_count,
       ipad_cn_download_count
     FROM dws_games_torchlight_download_daily
+    WHERE crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')
 trigger_type: system
-schedule: "45 * * * *"
+schedule: "45 */2 * * *"
 outputs:
   - target_table: "dws_games_torchlight_season_download"
     table_schema:
