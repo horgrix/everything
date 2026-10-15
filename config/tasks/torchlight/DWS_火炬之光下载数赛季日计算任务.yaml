@@ -1,6 +1,6 @@
 name: "DWS_火炬之光下载数赛季日计算任务"
 depends_on:
-  - "DWS_火炬之光下载数每天计算任务Fix"
+  - "DWS_火炬之光下载数每天计算任务"
 type: db
 db:
   type: sqlite
