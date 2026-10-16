@@ -100,3 +100,5 @@ outputs:
         - name: ipad_cn_download_count
           source: ipad_cn_download_count
           to_number: true
+        - name: crawled_at
+          source: crawled_at
