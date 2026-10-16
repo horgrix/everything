@@ -8,6 +8,7 @@ db:
   path: "crawler.db"
   query: >
     SELECT 
+      a.crawled_at,
       a.app_name,
       CASE
         WHEN a.crawled_at >= '2026-10-16 10' THEN 14
