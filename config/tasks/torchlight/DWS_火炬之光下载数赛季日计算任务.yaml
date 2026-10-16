@@ -11,17 +11,17 @@ db:
       a.crawled_at,
       a.app_name,
       CASE
-        WHEN a.crawled_at >= '2026-10-16 10' THEN 14
-        WHEN a.crawled_at >= '2026-07-17 10' THEN 13
-        WHEN a.crawled_at >= '2026-04-17 10' THEN 12
-        WHEN a.crawled_at >= '2026-01-16 10' THEN 11
+        WHEN a.crawled_at >= '2026-10-16' THEN 14
+        WHEN a.crawled_at >= '2026-07-17' THEN 13
+        WHEN a.crawled_at >= '2026-04-17' THEN 12
+        WHEN a.crawled_at >= '2026-01-16' THEN 11
         ELSE 10
       END AS ss,
       CASE
-        WHEN a.crawled_at >= '2026-10-16 10' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-07-17 10' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-04-17 10' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-01-16 10' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-10-16' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-07-17' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-04-17' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
+        WHEN a.crawled_at >= '2026-01-16' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
         ELSE 0
       END AS ss_day,
       a.tap_download_count,
