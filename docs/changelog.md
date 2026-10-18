@@ -1,6 +1,18 @@
 # 爬虫系统变更日志
 
-> 版本：v1.7 | 更新日期：2026-10-14
+> 版本：v1.8 | 更新日期：2026-10-15
+
+---
+
+## v1.8 MySQL 连接字段全面支持 `${ENV_VAR}`（2026-10-15 新增）
+
+- 此前只有 `password` 做 `${ENV_VAR}` 解析，`host` / `port` / `user` / `database` / `charset` 原样使用；现在整份连接配置统一解析。
+- `crawler/mysql_client.py` 新增 `resolve_mysql_config(db_config) -> dict`：对 `host` / `port` / `user` / `password` / `database` / `charset` 的**字符串值**调用 `crawler.template.resolve_env_vars`（唯一实现），返回新 dict；非字符串值与其它键（如 `batch_size`）原样保留。
+- `MysqlSink._get_connection` 先解析整份 `mysql` 块再建连；`_conn_key` 也用解析后的值——`${MYSQL_HOST}` 与字面量共享同一连接缓存，环境变量变化会重新建连。
+- `DbSource._read_mysql` 同样先 `resolve_mysql_config` 再建连（读路径一致）。
+- 语义不变：只认 `${ENV_VAR}`，值里的 `{xxx}` 不会被当模板（密码/库名安全）；缺失环境变量保留 `${VAR}` 原样 + warning。
+
+**受影响文件**：`crawler/mysql_client.py`、`crawler/sinks/mysql_sink.py`、`crawler/sources/db_source.py`、`tests/test_mysql_config_env.py`（新增）、`docs/task_config_guide.md`
 
 ---
 

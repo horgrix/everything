@@ -664,10 +664,32 @@ outputs:
     parser: {...}
 ```
 
+连接字段全部可走环境变量（部署时把库地址/账号放在环境里，YAML 不进密钥）：
+
+```yaml
+outputs:
+  - target_mysql: "remote_apps"
+    mysql:
+      host: "${MYSQL_HOST}"           # 全部字段都支持 ${ENV_VAR}
+      port: "${MYSQL_PORT}"           # 字符串形式的端口会转成 int
+      user: "${MYSQL_USER}"
+      password: "${MYSQL_PASSWORD}"
+      database: "${MYSQL_DATABASE}"
+      charset: "${MYSQL_CHARSET}"
+    table_schema: {...}
+    parser: {...}
+```
+
 - **不做任何 SQL 方言转换**：`type` / `constraint` 按目标库原生方言书写，系统原样拼进
   `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX`。SQLite 任务不能直接复用为 MySQL 任务，
   需各自书写 `table_schema`。
 - `password` 支持 `${ENV_VAR}`（从环境变量读取）。
+- `host` / `port` / `user` / `database` / `charset` 同样支持 `${ENV_VAR}`；解析在
+  建连前对整份 `mysql` 配置统一执行一次（`resolve_mysql_config`），连接缓存键也用
+  解析后的值，所以 `${MYSQL_HOST}` 与它的字面量等价、环境变量变化会重新建连。
+- 这些字段只做 `${ENV}` 替换，**不会**把值里的 `{xxx}` 当时间/自定义模板变量
+  （密码、库名里出现 `{xxx}` 是安全的）；环境变量缺失时保留 `${VAR}` 原样并写
+  warning 日志。
 - 写入使用 `INSERT ... ON DUPLICATE KEY UPDATE`，自动排除主键 / `AUTO_INCREMENT` 列；
   若所有列均为主键，则退化为 `INSERT IGNORE`。
 - **一个 output 只能挂一个 SQL sink**（`target_table` 或 `target_mysql` 二选一）；
@@ -1468,6 +1490,9 @@ https://api.example.com/v1/items?region=hk&app=123456
 - `db.query`（包括 `type: db` 数据源与查库参数的 `query`）
 - 文件数据源的 `file.path`
 - 输出 sink 的 `url`（`target_api`）、`path`（`target_file`）
+- MySQL 连接配置的 `host` / `port` / `user` / `password` / `database` / `charset`
+  （`target_mysql` 的 `mysql` 块与 `type: db` 的 `db` 块，统一由
+  `crawler.mysql_client.resolve_mysql_config` 解析）
 
 **缺失行为**：环境变量未设置时，**保留 `${VAR}` 原样并写 warning 日志**（不会静默替换为空串），方便定位配置漏配。
 
@@ -1493,15 +1518,15 @@ outputs:
           path: "id"
 ```
 
-查外部 MySQL 时，密码也常用 `${ENV}`：
+查外部 MySQL 时，连接字段常用 `${ENV}`（`host`/`port`/`user`/`password`/`database`/`charset` 都支持）：
 
 ```yaml
 type: db
 db:
   type: mysql
-  host: "10.0.0.5"
-  port: 3306
-  user: "reader"
+  host: "${MYSQL_HOST}"
+  port: "${MYSQL_PORT}"
+  user: "${MYSQL_USER}"
   password: "${MYSQL_PWD}"
   database: "report"
   query: "SELECT app_id, name FROM apps WHERE stat_date = '{yesterday}'"
@@ -1516,7 +1541,7 @@ db:
 **db 配置**：
 
 - 缺省（不写 `db`）→ `{type: sqlite, path: crawler.db}`，即查当前工作目录下的本地 `crawler.db`；
-- 也可显式写外部库，字段与 `type: db` 数据源一致：`db: {type: mysql, host, port, user, password, database}`，`password` 支持 `${ENV}`（复用统一的 `crawler.template.resolve_env_vars`）。MySQL 连接固定使用 `utf8mb4` 字符集 + `DictCursor`，读/连接超时 30s/10s。
+- 也可显式写外部库，字段与 `type: db` 数据源一致：`db: {type: mysql, host, port, user, password, database, charset}`；其中**字符串字段都可写 `${ENV}`**（`host`/`port`/`user`/`password`/`database`/`charset`，统一由 `crawler.mysql_client.resolve_mysql_config` → `crawler.template.resolve_env_vars` 解析）。MySQL 连接固定使用 `utf8mb4` 字符集 + `DictCursor`，读/连接超时 30s/10s。
 
 **取值方式**：
 
@@ -1839,6 +1864,21 @@ db:
   password: "${MYSQL_PWD}"           # 支持 ${ENV_VAR} 环境变量
   database: "source_db"
   query: "SELECT * FROM trades WHERE created_at >= '2026-01-01'"
+```
+
+连接字段同样可以全部走环境变量：
+
+```yaml
+type: db
+db:
+  type: mysql
+  host: "${SRC_MYSQL_HOST}"
+  port: "${SRC_MYSQL_PORT}"
+  user: "${SRC_MYSQL_USER}"
+  password: "${SRC_MYSQL_PASSWORD}"
+  database: "${SRC_MYSQL_DATABASE}"
+  charset: "${SRC_MYSQL_CHARSET}"
+  query: "SELECT * FROM trades WHERE created_at >= '{days_ago:7}'"
 ```
 
 > MySQL 需要安装 `pymysql`。查询完成后立即关闭连接，不保持长连接。

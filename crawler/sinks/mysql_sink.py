@@ -9,8 +9,10 @@ Design notes
   ``constraint`` are written by the user in native MySQL dialect and are
   spliced verbatim into ``CREATE TABLE``. This sink never translates
   SQLite types to MySQL (or vice versa).
-* ``password`` supports ``${ENV_VAR}`` substitution via the shared
-  :func:`crawler.template.resolve_env_vars`.
+* The connection fields ``host`` / ``port`` / ``user`` / ``password`` /
+  ``database`` / ``charset`` all support ``${ENV_VAR}`` substitution via the
+  shared :func:`crawler.mysql_client.resolve_mysql_config` (one pass over the
+  whole ``mysql`` block before connecting).
 * Blocking pymysql calls are moved off the event loop by the base
   ``*_async`` facades (``asyncio.to_thread``).
 
@@ -46,8 +48,7 @@ import asyncio
 import logging
 
 from .base import OutputSink, SinkResult
-from ..mysql_client import build_mysql_connection
-from ..template import resolve_env_vars
+from ..mysql_client import build_mysql_connection, resolve_mysql_config
 
 logger = logging.getLogger(__name__)
 
@@ -161,9 +162,21 @@ class MysqlSink(OutputSink):
 
     @staticmethod
     def _conn_key(mysql_config: dict) -> tuple:
+        """Connection cache key — built from **env-resolved** values.
+
+        Callers must pass an already-resolved config so that ``${DB_HOST}`` and
+        its literal value share one cache entry (and two different env values
+        do not collide).
+        """
+        port = mysql_config.get("port", 3306) or 3306
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            # 未解析/非法端口：按原样入 key，避免缓存键构造先行报错
+            port = str(port)
         return (
             str(mysql_config.get("host", "localhost")),
-            int(mysql_config.get("port", 3306) or 3306),
+            port,
             str(mysql_config.get("user", "")),
             str(mysql_config.get("password", "")),
             str(mysql_config.get("database", "")),
@@ -171,7 +184,9 @@ class MysqlSink(OutputSink):
         )
 
     def _get_connection(self, output_config: dict):
-        mysql_config = output_config.get("mysql") or {}
+        # 先解析整份 mysql 配置（host/port/user/password/database/charset），
+        # 建连与缓存键都用解析后的值。
+        mysql_config = resolve_mysql_config(output_config.get("mysql") or {})
         cache_key = self._conn_key(mysql_config)
         conn = self._conns.get(cache_key)
         if conn is not None:
@@ -179,10 +194,7 @@ class MysqlSink(OutputSink):
 
         database = mysql_config.get("database", "")
         conn = build_mysql_connection(
-            {
-                **mysql_config,
-                "password": resolve_env_vars(mysql_config.get("password", "")),
-            },
+            mysql_config,
             charset=mysql_config.get("charset", "utf8mb4"),
         )
         self._conns[cache_key] = conn

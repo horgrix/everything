@@ -10,8 +10,8 @@ import asyncio
 import logging
 
 from .base import DataSource
-from ..mysql_client import build_mysql_connection
-from ..template import URLTemplate, resolve_env_vars
+from ..mysql_client import build_mysql_connection, resolve_mysql_config
+from ..template import URLTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ class DbSource(DataSource):
 
     Returns list[dict] with column-name keys.
 
-    Supports ${ENV_VAR} substitution in password fields.
+    Supports ${ENV_VAR} substitution in the connection fields
+    (host / port / user / password / database / charset).
     """
 
     # ---- DataSource interface ----
@@ -83,15 +84,15 @@ class DbSource(DataSource):
 
     @staticmethod
     def _read_mysql(db_config: dict) -> list[dict]:
+        # 先解析整份连接配置的 ${ENV_VAR}（host/port/user/password/database/charset），
+        # 解析只认 ${VAR}，密码里的 {xxx} 不会被当模板。
+        db_config = resolve_mysql_config(db_config)
         host = db_config.get("host", "localhost")
         port = int(db_config.get("port", 3306) or 3306)
         database = db_config.get("database", "")
         query = db_config.get("query", "")
 
-        # 密码仅做 ${ENV} 替换（唯一实现），不解析 {xxx} 模板
-        conn_config = dict(db_config)
-        conn_config["password"] = resolve_env_vars(db_config.get("password", ""))
-        conn = build_mysql_connection(conn_config, read_timeout=30)
+        conn = build_mysql_connection(db_config, read_timeout=30)
 
         try:
             with conn.cursor() as cursor:
