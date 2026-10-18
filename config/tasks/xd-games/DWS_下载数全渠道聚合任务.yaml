@@ -1,7 +1,7 @@
-name: "DWS_火炬之光下载数赛季日计算任务"
+name: "DWS_下载数全渠道聚合任务"
 depends_on:
-  - "DWS_火炬之光下载数iOS每天计算任务"
-  - "DWS_火炬之光下载数Tap每天计算任务"
+  - "DWS_下载数iOS渠道每天计算任务"
+  - "DWS_下载数Tap渠道每天计算任务"
 type: db
 db:
   type: sqlite
@@ -10,20 +10,6 @@ db:
     SELECT 
       a.crawled_at,
       a.app_name,
-      CASE
-        WHEN a.crawled_at >= '2026-10-16' THEN 14
-        WHEN a.crawled_at >= '2026-07-17' THEN 13
-        WHEN a.crawled_at >= '2026-04-17' THEN 12
-        WHEN a.crawled_at >= '2026-01-16' THEN 11
-        ELSE 10
-      END AS ss,
-      CASE
-        WHEN a.crawled_at >= '2026-10-16' THEN 91 - (CAST(julianday('2027-01-15 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-07-17' THEN 91 - (CAST(julianday('2026-10-16 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-04-17' THEN 91 - (CAST(julianday('2026-07-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        WHEN a.crawled_at >= '2026-01-16' THEN 91 - (CAST(julianday('2026-04-17 10' || ':00:00') - julianday(a.crawled_at || ' 00:00:00') AS INTEGER))
-        ELSE 0
-      END AS ss_day,
       a.tap_download_count,
       a.tap_pc_download_count,
       a.tap_app_download_count,
@@ -31,9 +17,9 @@ db:
       b.iphone_cn_download_count,
       b.ipad_cn_download_count
     FROM 
-      dws_games_torchlight_tap_download_daily a
+      dws_xd_games_tap_download_daily a
     INNER JOIN
-      dws_games_torchlight_ios_download_daily b
+      dws_xd_games_ios_download_daily b
     ON 
       a.crawled_at = b.crawled_at
     AND 
@@ -42,7 +28,7 @@ db:
 trigger_type: system
 schedule: "45 */2 * * *"
 outputs:
-  - target_table: "dws_games_torchlight_season_download"
+  - target_table: "dws_xd_games_all_download_daily"
     table_schema:
       columns:
         - name: id
@@ -50,10 +36,6 @@ outputs:
           constraint: PRIMARY KEY AUTOINCREMENT
         - name: app_name
           type: TEXT
-        - name: ss
-          type: INTEGER
-        - name: ss_day
-          type: INTEGER
         - name: tap_download_count
           type: INTEGER
         - name: tap_pc_download_count
@@ -69,20 +51,14 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_games_torchlight_season_download
-          columns: [app_name, ss, ss_day]
+        - name: idx_uk_dws_xd_games_all_download_daily
+          columns: [app_name, crawled_at]
           unique: true
     parser:
       type: sdk_mapping
       fields:
         - name: app_name
           source: app_name 
-        - name: ss
-          source: ss
-          to_number: true     
-        - name: ss_day
-          source: ss_day
-          to_number: true
         - name: tap_download_count
           source: tap_download_count
           to_number: true
@@ -102,4 +78,4 @@ outputs:
           source: ipad_cn_download_count
           to_number: true
         - name: crawled_at
-          source: crawled_at
+          source: crawled_at  
