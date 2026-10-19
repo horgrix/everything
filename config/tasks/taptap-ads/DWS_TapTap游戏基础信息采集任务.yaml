@@ -25,6 +25,28 @@ db:
       app_id
     FROM taptap_app_ios_landing_ad_hourly
     WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    UNION
+    SELECT 
+      substr(crawled_at, 1, 7) as crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      app_name,
+      app_id
+    FROM taptap_pc_ad_discovery_hourly
+    WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    UNION
+    SELECT 
+      substr(crawled_at, 1, 7) as crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      app_name,
+      app_id
+    FROM taptap_pc_ad_top_hourly
+    WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
 schedule: "15 * * * *"
 outputs:
