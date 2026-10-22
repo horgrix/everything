@@ -26,7 +26,7 @@ db:
       a.app_name = b.app_name
     WHERE a.crawled_at >= "{days_ago:91}"
 trigger_type: system
-schedule: "45 */2 * * *"
+schedule: "45 8 * * *"
 outputs:
   - target_table: "dws_xd_games_all_download_daily"
     table_schema:
