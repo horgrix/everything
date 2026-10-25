@@ -9,40 +9,100 @@ db:
   path: "crawler.db"
   query: >
     SELECT
-      a.crawled_at AS crawled_at,
-      a.app_id AS app_id, 
-      a.app_name AS app_name,
-      a.tag_1 AS tag_1,
-      a.tag_2 AS tag_2,
-      a.tag_3 AS tag_3,
-      a.distribution_type AS distribution_type,
-      a.total_views AS app_landing_views,
-      a.ad_views AS app_landing_ad_views,
-      a.pcebid_views AS app_landing_pcebid_views,
-      b.total_views AS pc_landing_total_views,
-      b.ad_views AS pc_landing_ad_views,
-      c.total_views AS app_keywords_total_views,
-      c.ad_views AS app_keywords_ad_views,
-      a.total_views + b.total_views + c.total_views AS total_views,
-      a.ad_views + a.pcebid_views + b.ad_views + c.ad_views AS ad_views
+      *
     FROM
-      dws_taptap_app_landing_ad_daily a
-    LEFT JOIN 
-      dws_taptap_pc_ad_landing_daily b
-    ON 
-      a.app_id = b.app_id
-    AND 
-      a.crawled_at = b.crawled_at
-    LEFT JOIN
-      dws_taptap_app_keywords_ad_v2_daily c
-    ON 
-      a.app_id = c.app_id
-    AND 
-      a.crawled_at = c.crawled_at
+    (
+      SELECT
+        a.crawled_at AS crawled_at,
+        a.app_id AS app_id, 
+        b.app_name AS app_name,
+        b.tag_1 AS tag_1,
+        b.tag_2 AS tag_2,
+        b.tag_3 AS tag_3,
+        b.distribution_type AS distribution_type,
+        total_views,
+        app_views,
+        pc_views,
+        kw_views,
+        ad_views,
+        app_ad_views,
+        pc_ad_views,
+        kw_ad_views,
+        pcebid_views,
+        app_pcebid_views,
+        pc_pcebid_views,
+        kw_pcebid_views
+      FROM
+      (
+        SELECT
+          crawled_at, 
+          app_id,
+          SUM(total_views) AS total_views,
+          SUM(CASE WHEN src = 'app' THEN total_views ELSE 0 END) AS app_views,
+          SUM(CASE WHEN src = 'pc' THEN total_views ELSE 0 END) AS pc_views,
+          SUM(CASE WHEN src = 'kw' THEN total_views ELSE 0 END) AS kw_views,
+          SUM(ad_views) AS ad_views,
+          SUM(CASE WHEN src = 'app' THEN ad_views ELSE 0 END) AS app_ad_views,
+          SUM(CASE WHEN src = 'pc' THEN ad_views ELSE 0 END) AS pc_ad_views,
+          SUM(CASE WHEN src = 'kw' THEN ad_views ELSE 0 END) AS kw_ad_views,
+          SUM(pcebid_views) AS pcebid_views,
+          SUM(CASE WHEN src = 'app' THEN pcebid_views ELSE 0 END) AS app_pcebid_views,
+          SUM(CASE WHEN src = 'pc' THEN pcebid_views ELSE 0 END) AS pc_pcebid_views,
+          SUM(CASE WHEN src = 'kw' THEN pcebid_views ELSE 0 END) AS kw_pcebid_views
+        FROM
+        (
+          SELECT
+            'app' AS src,
+            crawled_at AS crawled_at,
+            app_id AS app_id, 
+            total_views,
+            ad_views,
+            pcebid_views
+          FROM dws_taptap_app_landing_ad_daily
+          WHERE crawled_at >= '{days_ago:15}'
+          UNION ALL 
+          SELECT
+            'pc' AS src,
+            crawled_at AS crawled_at,
+            app_id AS app_id, 
+            total_views,
+            ad_views,
+            0 as pcebid_views
+          FROM dws_taptap_pc_ad_landing_daily
+          WHERE crawled_at >= '{days_ago:15}'
+          UNION ALL
+          SELECT
+            'kw' AS src,
+            crawled_at AS crawled_at,
+            app_id AS app_id, 
+            total_views,
+            ad_views,
+            0 as pcebid_views
+          FROM dws_taptap_app_keywords_ad_v2_daily
+          WHERE crawled_at >= '{days_ago:15}'
+        )
+        GROUP BY crawled_at, app_id
+      ) a
+      LEFT JOIN
+        (
+          SELECT 
+            distribution_type,
+            tag_1,
+            tag_2,
+            tag_3,
+            app_name,
+            app_id
+          FROM dws_taptap_game
+          WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
+        ) b
+      ON 
+        a.app_id = b.app_id
+    )
+    WHERE ad_views > 0
 trigger_type: system
 schedule: "26 * * * *"
 outputs:
-  - target_table: "dws_taptap_ad_aggr_daily"
+  - target_table: "dws_taptap_ad_aggr_v2_daily"
     table_schema:
       columns:
         - name: app_id
@@ -57,28 +117,34 @@ outputs:
           type: TEXT
         - name: distribution_type
           type: INTEGER
-        - name: app_landing_views
-          type: INTEGER
-        - name: app_landing_ad_views
-          type: INTEGER
-        - name: app_landing_pcebid_views
-          type: INTEGER
-        - name: pc_landing_total_views
-          type: INTEGER
-        - name: pc_landing_ad_views
-          type: INTEGER
-        - name: app_keywords_total_views
-          type: INTEGER
-        - name: app_keywords_ad_views
-          type: INTEGER
         - name: total_views
           type: INTEGER
+        - name: app_views
+          type: INTEGER
+        - name: pc_views
+          type: INTEGER
+        - name: kw_views
+          type: INTEGER
         - name: ad_views
+          type: INTEGER
+        - name: app_ad_views
+          type: INTEGER
+        - name: pc_ad_views
+          type: INTEGER
+        - name: kw_ad_views
+          type: INTEGER
+        - name: pcebid_views
+          type: INTEGER
+        - name: app_pcebid_views
+          type: INTEGER
+        - name: pc_pcebid_views
+          type: INTEGER
+        - name: kw_pcebid_views
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_ad_aggr_daily
+        - name: idx_uk_dws_taptap_ad_aggr_v2_daily
           columns: [crawled_at, app_id]
           unique: true
     parser:
@@ -97,33 +163,42 @@ outputs:
           source: tag_3
         - name: distribution_type
           source: distribution_type
-          to_number: true   
-        - name: app_landing_views
-          source: app_landing_views
           to_number: true
-        - name: app_landing_ad_views
-          source: app_landing_ad_views
-          to_number: true 
-        - name: app_landing_pcebid_views
-          source: app_landing_pcebid_views
-          to_number: true   
-        - name: pc_landing_total_views
-          source: pc_landing_total_views
-          to_number: true 
-        - name: pc_landing_ad_views
-          source: pc_landing_ad_views
-          to_number: true 
-        - name: app_keywords_total_views
-          source: app_keywords_total_views
-          to_number: true      
-        - name: app_keywords_ad_views
-          source: app_keywords_ad_views
-          to_number: true 
         - name: total_views
           source: total_views
-          to_number: true      
+          to_number: true
+        - name: app_views
+          source: app_views
+          to_number: true 
+        - name: pc_views
+          source: pc_views
+          to_number: true   
+        - name: kw_views
+          source: kw_views
+          to_number: true    
         - name: ad_views
           source: ad_views
+          to_number: true 
+        - name: app_ad_views
+          source: app_ad_views
+          to_number: true      
+        - name: pc_ad_views
+          source: pc_ad_views
+          to_number: true 
+        - name: kw_ad_views
+          source: kw_ad_views
+          to_number: true 
+        - name: pcebid_views
+          source: pcebid_views
+          to_number: true 
+        - name: app_pcebid_views
+          source: app_pcebid_views
+          to_number: true 
+        - name: pc_pcebid_views
+          source: pc_pcebid_views
+          to_number: true 
+        - name: kw_pcebid_views
+          source: kw_pcebid_views
           to_number: true 
         - name: crawled_at
           source: crawled_at
