@@ -15,7 +15,7 @@ db:
       SELECT
         a.crawled_at AS crawled_at,
         a.app_id AS app_id, 
-        b.app_name AS app_name,
+        a.app_name AS app_name,
         b.tag_1 AS tag_1,
         b.tag_2 AS tag_2,
         b.tag_3 AS tag_3,
@@ -37,6 +37,7 @@ db:
         SELECT
           crawled_at, 
           app_id,
+          app_name,
           SUM(total_views) AS total_views,
           SUM(CASE WHEN src = 'app' THEN total_views ELSE 0 END) AS app_views,
           SUM(CASE WHEN src = 'pc' THEN total_views ELSE 0 END) AS pc_views,
@@ -53,6 +54,7 @@ db:
         (
           SELECT
             'app' AS src,
+            app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
             total_views,
@@ -63,6 +65,7 @@ db:
           UNION ALL 
           SELECT
             'pc' AS src,
+            app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
             total_views,
@@ -73,6 +76,7 @@ db:
           UNION ALL
           SELECT
             'kw' AS src,
+            keyword as app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
             total_views,
@@ -81,7 +85,7 @@ db:
           FROM dws_taptap_app_keywords_ad_v2_daily
           WHERE crawled_at >= '{days_ago:15}'
         )
-        GROUP BY crawled_at, app_id
+        GROUP BY crawled_at, app_id, app_name
       ) a
       LEFT JOIN
         (
