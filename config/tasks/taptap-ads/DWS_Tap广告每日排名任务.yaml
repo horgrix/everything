@@ -10,6 +10,7 @@ db:
       rank_type,
       crawled_at,
       app_id,
+      app_name,
       total_ad_veiws,
       ad_rank
     FROM
@@ -18,6 +19,7 @@ db:
         'daily' as rank_type,
         crawled_at,
         app_id,
+        app_name,
         (ad_views + pcebid_views) AS total_ad_veiws,
         ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY (ad_views + pcebid_views) DESC) AS ad_rank
       FROM
@@ -29,6 +31,7 @@ db:
         'weekly' as rank_type,
         strftime('%Y-%W', crawled_at, 'localtime') as crawled_at,
         app_id,
+        app_name,
         SUM(ad_views + pcebid_views) AS total_ad_veiws,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%W', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
@@ -36,12 +39,13 @@ db:
       WHERE 
         strftime('%Y-%W', crawled_at, 'localtime') = strftime('%Y-%W', 'now', 'localtime')
       GROUP BY
-        strftime('%Y-%W', crawled_at, 'localtime'), app_id
+        strftime('%Y-%W', crawled_at, 'localtime'), app_id, app_name
       UNION ALL
       SELECT
         'monthly' as rank_type,
         strftime('%Y-%m', crawled_at, 'localtime') as crawled_at,
         app_id,
+        app_name,
         SUM(ad_views + pcebid_views) AS total_ad_veiws,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%m', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
@@ -49,7 +53,7 @@ db:
       WHERE 
         strftime('%Y-%m', crawled_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')
       GROUP BY
-        strftime('%Y-%m', crawled_at, 'localtime'), app_id
+        strftime('%Y-%m', crawled_at, 'localtime'), app_id, app_name
     )
     WHERE ad_rank <= 20
 trigger_type: system
@@ -65,6 +69,8 @@ outputs:
           type: TEXT
         - name: app_id
           type: INTEGER
+        - name: app_name
+          type: TEXT
         - name: total_ad_veiws
           type: INTEGER
         - name: ad_rank
@@ -73,7 +79,7 @@ outputs:
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
         - name: idx_uk_dws_taptap_ad_rank_v4_daily
-          columns: [crawled_at, rank_type, app_id]
+          columns: [crawled_at, rank_type, app_id, app_name]
           unique: true
     parser:
       type: sdk_mapping
@@ -83,6 +89,8 @@ outputs:
         - name: app_id
           source: app_id
           to_number: true 
+        - name: app_name
+          source: app_name
         - name: total_ad_veiws
           source: total_ad_veiws
           to_number: true   
