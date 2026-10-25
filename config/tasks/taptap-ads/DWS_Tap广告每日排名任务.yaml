@@ -1,0 +1,93 @@
+name: "DWS_Tap广告每日排名任务"
+depends_on:
+  - "DWS_Tap广告每日聚合任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      rank_type,
+      crawled_at,
+      app_id,
+      total_ad_veiws,
+      ad_rank
+    FROM
+    (
+      SELECT
+        'daily' as rank_type,
+        crawled_at,
+        app_id,
+        (ad_views + pcebid_views) AS total_ad_veiws,
+        ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY (ad_views + pcebid_views) DESC) AS ad_rank
+      FROM
+        dws_taptap_ad_aggr_v4_daily
+      WHERE 
+        crawled_at = '{today}'
+      UNION ALL
+      SELECT
+        'weekly' as rank_type,
+        strftime('%Y-%W', crawled_at, 'localtime') as crawled_at,
+        app_id,
+        SUM(ad_views + pcebid_views) AS total_ad_veiws,
+        ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%W', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
+      FROM
+        dws_taptap_ad_aggr_v4_daily
+      WHERE 
+        strftime('%Y-%W', crawled_at, 'localtime') = strftime('%Y-%W', 'now', 'localtime')
+      GROUP BY
+        strftime('%Y-%W', crawled_at, 'localtime'), app_id
+      UNION ALL
+      SELECT
+        'monthly' as rank_type,
+        strftime('%Y-%m', crawled_at, 'localtime') as crawled_at,
+        app_id,
+        SUM(ad_views + pcebid_views) AS total_ad_veiws,
+        ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%m', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
+      FROM
+        dws_taptap_ad_aggr_v4_daily
+      WHERE 
+        strftime('%Y-%m', crawled_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')
+      GROUP BY
+        strftime('%Y-%m', crawled_at, 'localtime'), app_id
+    )
+    WHERE ad_rank <= 20
+trigger_type: system
+schedule: "29 * * * *"
+outputs:
+  - target_table: "dws_taptap_ad_rank_v4_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: rank_type
+          type: TEXT
+        - name: app_id
+          type: INTEGER
+        - name: total_ad_veiws
+          type: INTEGER
+        - name: ad_rank
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_ad_rank_v4_daily
+          columns: [crawled_at, rank_type, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: rank_type
+          source: rank_type
+        - name: app_id
+          source: app_id
+          to_number: true 
+        - name: total_ad_veiws
+          source: total_ad_veiws
+          to_number: true   
+        - name: ad_rank
+          source: ad_rank
+          to_number: true    
+        - name: crawled_at
+          source: crawled_at
