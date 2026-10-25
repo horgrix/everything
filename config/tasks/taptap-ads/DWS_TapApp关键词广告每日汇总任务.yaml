@@ -33,7 +33,7 @@ db:
       SUM(android_hot_spot_ad_views) android_hot_spot_ad_views,
       SUM(ios_hot_spot_ad_views) ios_hot_spot_ad_views
     FROM 
-      dws_taptap_app_keywords_ad_daily
+      dws_taptap_app_keywords_ad_v2_daily
     WHERE
       crawled_at >= '{days_ago:4}'
     GROUP BY

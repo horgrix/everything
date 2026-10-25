@@ -9,8 +9,7 @@ db:
     FROM
     (
       SELECT 
-        * ,
-        ROW_NUMBER() OVER (PARTITION BY app_id ORDER BY crawled_at DESC) AS orderby_num
+        * 
       FROM
       (
         SELECT 
@@ -25,21 +24,20 @@ db:
           fans_count as total_fans_count,
           fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
           pc_download_count as total_download_count,
-          pc_download_count - LAG(pc_download_count,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+          pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
         FROM taptap_pc_hot_list_hourly 
         WHERE app_id IS NOT NULL
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
       ) as t1
     )
-    WHERE orderby_num <= 2 AND download_count >= 0
+    WHERE download_count >= 0
     UNION ALL
     SELECT
       *
     FROM
     (
       SELECT 
-        * ,
-        ROW_NUMBER() OVER (PARTITION BY app_id ORDER BY crawled_at DESC) AS orderby_num
+        * 
       FROM
       (
         SELECT 
@@ -54,14 +52,14 @@ db:
           fans_count as total_fans_count,
           fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
           hits_total as total_download_count,
-          hits_total - LAG(hits_total,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
         FROM taptap_app_hot_list_hourly
         WHERE app_id IS NOT NULL
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
         ORDER BY app_id, crawled_at DESC
       ) as t2
     )
-    WHERE orderby_num <= 2 AND download_count >= 0
+    WHERE download_count >= 0
 trigger_type: system
 schedule: "5 */2 * * *"
 outputs:

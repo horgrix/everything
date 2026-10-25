@@ -1,0 +1,129 @@
+name: "DWS_Tap广告每日聚合任务"
+depends_on:
+  - "DWS_TapApp关键词广告每日计算任务"
+  - "DWS_TapApp首页广告每日计算任务"
+  - "DWS_TapPC首页广告每日计算任务"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      a.crawled_at AS crawled_at,
+      a.app_id AS app_id, 
+      a.app_name AS app_name,
+      a.tag_1 AS tag_1,
+      a.tag_2 AS tag_2,
+      a.tag_3 AS tag_3,
+      a.distribution_type AS distribution_type,
+      a.total_views AS app_landing_views,
+      a.ad_views AS app_landing_ad_views,
+      a.pcebid_views AS app_landing_pcebid_views,
+      b.total_views AS pc_landing_total_views,
+      b.ad_views AS pc_landing_ad_views,
+      c.total_views AS app_keywords_total_views,
+      c.ad_views AS app_keywords_ad_views,
+      a.total_views + b.total_views + c.total_views AS total_views,
+      a.ad_views + a.pcebid_views + b.ad_views + c.ad_views AS ad_views
+    FROM
+      dws_taptap_app_landing_ad_daily a
+    LEFT JOIN 
+      dws_taptap_pc_ad_landing_daily b
+    ON 
+      a.app_id = b.app_id
+    AND 
+      a.crawled_at = b.crawled_at
+    LEFT JOIN
+      dws_taptap_app_keywords_ad_v2_daily c
+    ON 
+      a.app_id = c.app_id
+    AND 
+      a.crawled_at = c.crawled_at
+trigger_type: system
+schedule: "23 * * * *"
+outputs:
+  - target_table: "dws_taptap_ad_aggr_daily"
+    table_schema:
+      columns:
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: distribution_type
+          type: INTEGER
+        - name: app_landing_views
+          type: INTEGER
+        - name: app_landing_ad_views
+          type: INTEGER
+        - name: app_landing_pcebid_views
+          type: INTEGER
+        - name: pc_landing_total_views
+          type: INTEGER
+        - name: pc_landing_ad_views
+          type: INTEGER
+        - name: app_keywords_total_views
+          type: INTEGER
+        - name: app_keywords_ad_views
+          type: INTEGER
+        - name: total_views
+          type: INTEGER
+        - name: ad_views
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
+      indexes:
+        - name: idx_uk_dws_taptap_ad_aggr_daily
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true 
+        - name: app_name
+          source: app_name
+        - name: tag_1
+          source: tag_1     
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: distribution_type
+          source: distribution_type
+          to_number: true   
+        - name: app_landing_views
+          source: app_landing_views
+          to_number: true
+        - name: app_landing_ad_views
+          source: app_landing_ad_views
+          to_number: true 
+        - name: app_landing_pcebid_views
+          source: app_landing_pcebid_views
+          to_number: true   
+        - name: pc_landing_total_views
+          source: pc_landing_total_views
+          to_number: true 
+        - name: pc_landing_ad_views
+          source: pc_landing_ad_views
+          to_number: true 
+        - name: app_keywords_total_views
+          source: app_keywords_total_views
+          to_number: true      
+        - name: app_keywords_ad_views
+          source: app_keywords_ad_views
+          to_number: true 
+        - name: total_views
+          source: total_views
+          to_number: true      
+        - name: ad_views
+          source: ad_views
+          to_number: true 
+        - name: crawled_at
+          source: crawled_at

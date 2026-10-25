@@ -9,6 +9,7 @@ db:
     SELECT 
       crawled_at,
       keyword,
+      app_id,
       SUM(total_views) as total_views,
       SUM(CASE WHEN platform = 'android' THEN total_views ELSE 0 END) android_views,
       SUM(CASE WHEN platform = 'ios' THEN total_views ELSE 0 END) ios_views,
@@ -38,77 +39,85 @@ db:
         'android' as platform,
         'discover' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_android_search_discovery_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       UNION ALL
       SELECT 
         'android' as platform,
         'hot_search' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_android_search_hot_search_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       UNION ALL
       SELECT 
         'android' as platform,
         'hot_spot' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_android_search_hot_spot_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       UNION ALL
       SELECT 
         'ios' as platform,
         'discover' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_ios_search_discovery_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       UNION ALL
       SELECT 
         'ios' as platform,
         'hot_search' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_ios_search_hot_search_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       UNION ALL
       SELECT 
         'ios' as platform,
         'hot_spot' as kw_type,
         keyword,
+        app_id,
         COUNT(*) AS total_views,
         SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
         substr(crawled_at, 1, 10) as crawled_at
       FROM taptap_app_ios_search_hot_spot_ad_hourly
-      WHERE substr(crawled_at, 1, 10) >= '{days_ago:4}'
-      GROUP BY substr(crawled_at, 1, 10), keyword
+      WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+      GROUP BY substr(crawled_at, 1, 10), keyword, app_id
     ) a
-    GROUP BY crawled_at, keyword
+    GROUP BY crawled_at, keyword, app_id
 trigger_type: system
 schedule: "20 * * * *"
 outputs:
-  - target_table: "dws_taptap_app_keywords_ad_daily"
+  - target_table: "dws_taptap_app_keywords_ad_v2_daily"
     table_schema:
       columns:
         - name: keyword
           type: TEXT
+        - name: app_id
+          type: INTEGER
         - name: total_views
           type: INTEGER
         - name: android_views
@@ -160,14 +169,16 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_app_keywords_ad_daily_crawled_at_keyword
-          columns: [crawled_at, keyword]
+        - name: idx_uk_dws_taptap_app_keywords_ad_v2_daily
+          columns: [crawled_at, app_id, keyword]
           unique: true
     parser:
       type: sdk_mapping
       fields:
         - name: keyword
           source: keyword
+        - name: app_id
+          source: app_id
         - name: total_views
           source: total_views
           to_number: true

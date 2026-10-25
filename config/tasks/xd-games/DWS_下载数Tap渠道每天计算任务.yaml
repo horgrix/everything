@@ -23,7 +23,7 @@ db:
           crawled_at,
           app_id,
           pc_download_count - LAG(pc_download_count,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_pc_download_count,
-          hits_total - LAG(hits_total,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_app_download_count
+          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_app_download_count
         FROM taptap_pc_hot_list_hourly 
         WHERE app_id in (172664, 45213)
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
@@ -32,7 +32,7 @@ db:
           crawled_at,
           app_id,
           pc_download_count - LAG(pc_download_count,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_pc_download_count,
-          hits_total - LAG(hits_total,1,0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_app_download_count
+          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS tap_app_download_count
         FROM taptap_app_hot_list_hourly 
         WHERE app_id in (172664, 45213)
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
