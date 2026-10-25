@@ -73,7 +73,7 @@ db:
     ON 
       b.app_id = c.app_id
 trigger_type: system
-schedule: "23 * * * *"
+schedule: "21 * * * *"
 outputs:
   - target_table: "dws_taptap_pc_ad_landing_daily"
     table_schema:

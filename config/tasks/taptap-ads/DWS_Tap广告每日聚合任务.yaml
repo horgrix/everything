@@ -40,7 +40,7 @@ db:
     AND 
       a.crawled_at = c.crawled_at
 trigger_type: system
-schedule: "23 * * * *"
+schedule: "26 * * * *"
 outputs:
   - target_table: "dws_taptap_ad_aggr_daily"
     table_schema:
