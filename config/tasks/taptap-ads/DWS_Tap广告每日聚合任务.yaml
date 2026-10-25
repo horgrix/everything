@@ -106,7 +106,7 @@ db:
 trigger_type: system
 schedule: "26 * * * *"
 outputs:
-  - target_table: "dws_taptap_ad_aggr_v2_daily"
+  - target_table: "dws_taptap_ad_aggr_v4_daily"
     table_schema:
       columns:
         - name: app_id
@@ -148,8 +148,8 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_ad_aggr_v2_daily
-          columns: [crawled_at, app_id]
+        - name: idx_uk_dws_taptap_ad_aggr_v4_daily
+          columns: [crawled_at, app_id, app_name]
           unique: true
     parser:
       type: sdk_mapping
