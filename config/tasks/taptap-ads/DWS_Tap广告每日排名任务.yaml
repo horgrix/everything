@@ -12,6 +12,9 @@ db:
       app_id,
       app_name,
       total_ad_veiws,
+      total_app_ad_views,
+      total_pc_ad_views,
+      total_kv_ad_views,
       ad_rank
     FROM
     (
@@ -21,6 +24,9 @@ db:
         app_id,
         app_name,
         (ad_views + pcebid_views) AS total_ad_veiws,
+        (app_ad_views + app_pcebid_views) AS total_app_ad_views,
+        (pc_ad_views + pc_pcebid_views) AS total_pc_ad_views,
+        (kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY (ad_views + pcebid_views) DESC) AS ad_rank
       FROM
         dws_taptap_ad_aggr_v4_daily
@@ -33,11 +39,14 @@ db:
         app_id,
         app_name,
         SUM(ad_views + pcebid_views) AS total_ad_veiws,
+        SUM(app_ad_views + app_pcebid_views) AS total_app_ad_views,
+        SUM(pc_ad_views + pc_pcebid_views) AS total_pc_ad_views,
+        SUM(kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%W', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
         dws_taptap_ad_aggr_v4_daily
       WHERE 
-        strftime('%Y-%W', crawled_at, 'localtime') = strftime('%Y-%W', 'now', 'localtime')
+        strftime('%Y-%W', crawled_at, 'localtime') in (strftime('%Y-%W', 'now', 'localtime'), strftime('%Y-%W', '2026-10-19', 'localtime'))
       GROUP BY
         strftime('%Y-%W', crawled_at, 'localtime'), app_id, app_name
       UNION ALL
@@ -47,6 +56,9 @@ db:
         app_id,
         app_name,
         SUM(ad_views + pcebid_views) AS total_ad_veiws,
+        SUM(app_ad_views + app_pcebid_views) AS total_app_ad_views,
+        SUM(pc_ad_views + pc_pcebid_views) AS total_pc_ad_views,
+        SUM(kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%m', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
         dws_taptap_ad_aggr_v4_daily
@@ -73,6 +85,12 @@ outputs:
           type: TEXT
         - name: total_ad_veiws
           type: INTEGER
+        - name: total_app_ad_views
+          type: INTEGER
+        - name: total_pc_ad_views
+          type: INTEGER
+        - name: total_kv_ad_views
+          type: INTEGER
         - name: ad_rank
           type: INTEGER
         - name: crawled_at
@@ -93,6 +111,15 @@ outputs:
           source: app_name
         - name: total_ad_veiws
           source: total_ad_veiws
+          to_number: true
+        - name: total_app_ad_views
+          source: total_app_ad_views
+          to_number: true   
+        - name: total_pc_ad_views
+          source: total_pc_ad_views
+          to_number: true   
+        - name: total_kv_ad_views
+          source: total_kv_ad_views
           to_number: true   
         - name: ad_rank
           source: ad_rank
