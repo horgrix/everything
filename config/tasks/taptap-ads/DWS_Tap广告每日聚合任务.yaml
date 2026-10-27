@@ -161,6 +161,7 @@ outputs:
         - name: app_id
           source: app_id
           default: 0
+          to_number: true
         - name: app_name
           source: app_name
           default: "-"
