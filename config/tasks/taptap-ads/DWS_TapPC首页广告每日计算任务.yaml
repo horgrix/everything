@@ -10,6 +10,7 @@ db:
       b.crawled_at AS crawled_at,
       b.app_id AS app_id, 
       c.app_name AS app_name,
+      c.icon AS icon,
       c.tag_1 AS tag_1,
       c.tag_2 AS tag_2,
       c.tag_3 AS tag_3,
@@ -66,7 +67,8 @@ db:
           tag_2,
           tag_3,
           app_name,
-          app_id
+          app_id,
+          icon
         FROM dws_taptap_game
         WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
       ) c
@@ -87,6 +89,8 @@ outputs:
         - name: tag_2
           type: TEXT
         - name: tag_3
+          type: TEXT
+        - name: icon
           type: TEXT
         - name: distribution_type
           type: INTEGER
@@ -124,6 +128,8 @@ outputs:
           source: tag_2
         - name: tag_3
           source: tag_3
+        - name: icon
+          source: icon
         - name: distribution_type
           source: distribution_type
           to_number: true   
