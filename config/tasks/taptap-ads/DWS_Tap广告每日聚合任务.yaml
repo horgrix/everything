@@ -15,7 +15,10 @@ db:
       SELECT
         a.crawled_at AS crawled_at,
         a.app_id AS app_id, 
-        a.app_name AS app_name,
+        CASE 
+          WHEN b.app_name IS NOT NULL THEN b.app_name 
+          ELSE a.app_name
+        END AS app_name,
         b.tag_1 AS tag_1,
         b.tag_2 AS tag_2,
         b.tag_3 AS tag_3,
