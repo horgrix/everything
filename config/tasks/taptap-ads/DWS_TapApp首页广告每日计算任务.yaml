@@ -1,6 +1,6 @@
 name: "DWS_TapApp首页广告每日计算任务"
 depends_on:
-  - "DWS_TapTap游戏基础信息采集任务"
+  - "DWS_TapTap游戏基础信息聚合"
 type: db
 db:
   type: sqlite
@@ -68,7 +68,7 @@ db:
           tag_3,
           app_name,
           app_id
-        FROM dws_taptap_game_basic_info_monthly
+        FROM dws_taptap_game
         WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
       ) c
     ON 

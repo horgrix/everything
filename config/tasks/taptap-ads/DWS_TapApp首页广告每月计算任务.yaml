@@ -47,7 +47,7 @@ db:
           tag_3,
           app_name,
           app_id
-        FROM dws_taptap_game_basic_info_monthly
+        FROM dws_taptap_game
         WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
       ) b
     ON 

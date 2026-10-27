@@ -1,6 +1,6 @@
 name: "DWS_TapApp关键词广告每日计算任务"
 depends_on:
-  - "DWS_TapTap游戏基础信息采集任务"
+  - "DWS_TapTap游戏基础信息聚合"
 type: db
 db:
   type: sqlite

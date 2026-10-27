@@ -1,4 +1,4 @@
-name: "DWS_TapTap热门游戏基础信息聚合"
+name: "DWS_TapTap游戏基础信息聚合"
 type: db
 db:
   type: sqlite
@@ -7,38 +7,82 @@ db:
     SELECT 
       app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3, MAX(icon) as icon 
     FROM
-      (SELECT * FROM
-        (SELECT 
+      (
+        SELECT 
           app_id,
           substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
-          'pc' as refer,
           app_name,
           tag_1,
           tag_2,
           tag_3,
-          MAX(icon) as icon
+          icon
         FROM taptap_pc_hot_list_hourly 
-        WHERE app_id IS NOT NULL
-        GROUP BY app_id, substr(crawled_at, 1, 7)) as t1
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
         UNION ALL
-        SELECT * FROM
-        (SELECT 
+        SELECT 
           app_id,
           substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
-          'app' as refer,
           app_name,
           tag_1,
           tag_2,
           tag_3,
-          MAX(icon) as icon
+          icon
         FROM taptap_app_hot_list_hourly
-        WHERE app_id IS NOT NULL
-        GROUP BY app_id, substr(crawled_at, 1, 7)) as t2)
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        UNION ALL
+        SELECT 
+          app_id,
+          substr(crawled_at, 1, 7) as crawled_at,
+          distribution_type,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon
+        FROM taptap_app_android_landing_ad_hourly
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        UNION ALL
+        SELECT 
+          app_id,
+          substr(crawled_at, 1, 7) as crawled_at,
+          distribution_type,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon
+        FROM taptap_app_ios_landing_ad_hourly
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        UNION ALL
+        SELECT 
+          app_id,
+          substr(crawled_at, 1, 7) as crawled_at,
+          distribution_type,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon
+        FROM taptap_pc_ad_discovery_hourly
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        UNION ALL
+        SELECT 
+          app_id,
+          substr(crawled_at, 1, 7) as crawled_at,
+          distribution_type,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon
+        FROM taptap_pc_ad_top_hourly
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+      )
       GROUP BY app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3
 trigger_type: system
-schedule: "4 */2 * * *"
+schedule: "15 * * * *"
 outputs:
   - target_table: "dws_taptap_game"
     table_schema:
