@@ -9,12 +9,6 @@ db:
     SELECT 
       app_id,
       substr(crawled_at, 1, 7) as crawled_at,
-      SUM(wish_count) as wish_count,
-      MAX(total_wish_count) as total_wish_count,
-      SUM(review_count) as review_count,
-      MAX(total_review_count) as total_review_count,
-      SUM(fans_count) as fans_count,
-      MAX(total_fans_count) as total_fans_count,
       SUM(download_count) as download_count,
       MAX(total_download_count) as total_download_count,
       SUM(pc_download_count) as pc_download_count,
@@ -33,18 +27,6 @@ outputs:
     table_schema:
       columns:
         - name: app_id
-          type: INTEGER
-        - name: total_wish_count
-          type: INTEGER
-        - name: wish_count
-          type: INTEGER
-        - name: total_review_count
-          type: INTEGER
-        - name: review_count
-          type: INTEGER
-        - name: total_fans_count
-          type: INTEGER
-        - name: fans_count
           type: INTEGER
         - name: total_download_count
           type: INTEGER
@@ -74,24 +56,6 @@ outputs:
         - name: app_id
           source: app_id
           to_number: true   
-        - name: total_wish_count
-          source: total_wish_count
-          to_number: true
-        - name: wish_count
-          source: wish_count
-          to_number: true
-        - name: total_review_count
-          source: total_review_count
-          to_number: true
-        - name: review_count
-          source: review_count
-          to_number: true
-        - name: total_fans_count
-          source: total_fans_count
-          to_number: true
-        - name: fans_count
-          source: fans_count
-          to_number: true
         - name: total_download_count
           source: total_download_count
           to_number: true

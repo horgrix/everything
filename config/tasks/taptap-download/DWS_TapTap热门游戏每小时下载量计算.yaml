@@ -9,57 +9,69 @@ db:
     FROM
     (
       SELECT 
-        * 
+        app_id,
+        crawled_at,
+        distribution_type,
+        icon,
+        refer,
+        total_download_count,
+        total_download_count -  CASE 
+                                  WHEN total_download_count_lag > 0 THEN total_download_count_lag
+                                  WHEN total_download_count_lag = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
+                                  ELSE total_download_count 
+                                END AS download_count
       FROM
       (
         SELECT 
           app_id,
           crawled_at,
           distribution_type,
+          icon,
+          released_time,
           'pc' as refer,
-          wish_count as total_wish_count,
-          wish_count - LAG(wish_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS wish_count,
-          review_count as total_review_count,
-          review_count - LAG(review_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS review_count,
-          fans_count as total_fans_count,
-          fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
           pc_download_count as total_download_count,
-          pc_download_count - LAG(pc_download_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+          LAG(pc_download_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) as total_download_count_lag
         FROM taptap_pc_hot_list_hourly 
         WHERE app_id IS NOT NULL
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
       ) as t1
     )
-    WHERE download_count >= 0
+    WHERE download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
     UNION ALL
     SELECT
       *
     FROM
     (
       SELECT 
-        * 
+        app_id,
+        crawled_at,
+        distribution_type,
+        icon,
+        refer,
+        total_download_count,
+        total_download_count -  CASE 
+                                  WHEN total_download_count_lag > 0 THEN total_download_count_lag
+                                  WHEN total_download_count_lag = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
+                                  ELSE total_download_count 
+                                END AS download_count
       FROM
       (
         SELECT 
           app_id,
           crawled_at,
           distribution_type,
+          icon,
+          released_time,
           'app' as refer,
-          wish_count as total_wish_count,
-          wish_count - LAG(wish_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS wish_count,
-          review_count as total_review_count,
-          review_count - LAG(review_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS review_count,
-          fans_count as total_fans_count,
-          fans_count - LAG(fans_count) OVER (PARTITION BY app_id ORDER BY crawled_at) AS fans_count,
           hits_total as total_download_count,
-          hits_total - LAG(hits_total) OVER (PARTITION BY app_id ORDER BY crawled_at) AS download_count
+          LAG(hits_total, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS total_download_count_lag
         FROM taptap_app_hot_list_hourly
         WHERE app_id IS NOT NULL
         AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
         ORDER BY app_id, crawled_at DESC
       ) as t2
     )
-    WHERE download_count >= 0
+    WHERE download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
 schedule: "5 */2 * * *"
 outputs:
@@ -73,20 +85,10 @@ outputs:
           type: INTEGER
         - name: distribution_type
           type: INTEGER
+        - name: icon
+          type: TEXT
         - name: refer
           type: TEXT
-        - name: total_wish_count
-          type: INTEGER
-        - name: wish_count
-          type: INTEGER
-        - name: total_review_count
-          type: INTEGER
-        - name: review_count
-          type: INTEGER
-        - name: total_fans_count
-          type: INTEGER
-        - name: fans_count
-          type: INTEGER
         - name: total_download_count
           type: INTEGER
         - name: download_count
@@ -111,27 +113,11 @@ outputs:
           to_number: true   
         - name: distribution_type
           source: distribution_type
-          to_number: true     
+          to_number: true
+        - name: icon
+          source: icon     
         - name: refer
           source: refer
-        - name: total_wish_count
-          source: total_wish_count
-          to_number: true
-        - name: wish_count
-          source: wish_count
-          to_number: true
-        - name: total_review_count
-          source: total_review_count
-          to_number: true
-        - name: review_count
-          source: review_count
-          to_number: true
-        - name: total_fans_count
-          source: total_fans_count
-          to_number: true
-        - name: fans_count
-          source: fans_count
-          to_number: true
         - name: total_download_count
           source: total_download_count
           to_number: true

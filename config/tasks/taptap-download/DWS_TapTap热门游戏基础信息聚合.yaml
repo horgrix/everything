@@ -5,7 +5,7 @@ db:
   path: "crawler.db"
   query: >
     SELECT 
-      app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3 
+      app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3, MAX(icon) as icon 
     FROM
       (SELECT * FROM
         (SELECT 
@@ -16,7 +16,8 @@ db:
           app_name,
           tag_1,
           tag_2,
-          tag_3
+          tag_3,
+          MAX(icon) as icon
         FROM taptap_pc_hot_list_hourly 
         WHERE app_id IS NOT NULL
         GROUP BY app_id, substr(crawled_at, 1, 7)) as t1
@@ -30,7 +31,8 @@ db:
           app_name,
           tag_1,
           tag_2,
-          tag_3
+          tag_3,
+          MAX(icon) as icon
         FROM taptap_app_hot_list_hourly
         WHERE app_id IS NOT NULL
         GROUP BY app_id, substr(crawled_at, 1, 7)) as t2)
@@ -56,6 +58,8 @@ outputs:
           type: TEXT
         - name: tag_3
           type: TEXT
+        - name: icon
+          type: TEXT
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m', 'now', 'localtime'))
       indexes:
@@ -79,5 +83,7 @@ outputs:
           source: tag_2
         - name: tag_3
           source: tag_3
+        - name: icon
+          source: icon
         - name: crawled_at
           source: crawled_at
