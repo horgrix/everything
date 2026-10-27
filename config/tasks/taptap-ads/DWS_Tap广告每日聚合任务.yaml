@@ -160,9 +160,10 @@ outputs:
       fields:
         - name: app_id
           source: app_id
-          to_number: true 
+          default: 0
         - name: app_name
           source: app_name
+          default: "-"
         - name: tag_1
           source: tag_1     
         - name: tag_2
