@@ -10,6 +10,7 @@ db:
     (
       SELECT 
         app_id,
+        app_name,
         crawled_at,
         distribution_type,
         icon,
@@ -24,6 +25,7 @@ db:
       (
         SELECT 
           app_id,
+          app_name,
           crawled_at,
           distribution_type,
           icon,
@@ -44,6 +46,7 @@ db:
     (
       SELECT 
         app_id,
+        app_name,
         crawled_at,
         distribution_type,
         icon,
@@ -58,6 +61,7 @@ db:
       (
         SELECT 
           app_id,
+          app_name,
           crawled_at,
           distribution_type,
           icon,
@@ -83,6 +87,8 @@ outputs:
           constraint: PRIMARY KEY AUTOINCREMENT
         - name: app_id
           type: INTEGER
+        - name: app_name
+          type: TEXT
         - name: distribution_type
           type: INTEGER
         - name: icon
@@ -111,6 +117,8 @@ outputs:
         - name: app_id
           source: app_id
           to_number: true   
+        - name: app_name
+          source: app_name 
         - name: distribution_type
           source: distribution_type
           to_number: true
