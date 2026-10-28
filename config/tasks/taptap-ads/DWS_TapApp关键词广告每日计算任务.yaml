@@ -31,7 +31,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_discovery_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}' 
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}' 
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
         UNION ALL
@@ -43,7 +43,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_hot_search_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}'
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
         UNION ALL
@@ -55,7 +55,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_hot_spot_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}'
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
         UNION ALL
@@ -67,7 +67,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_discovery_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}'
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
         UNION ALL
@@ -79,7 +79,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_hot_search_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}'
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
         UNION ALL
@@ -91,7 +91,7 @@ db:
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_hot_spot_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:16}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:7}'
         AND app_id > 0
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       ) a

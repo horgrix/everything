@@ -79,6 +79,18 @@ db:
           icon
         FROM taptap_pc_ad_top_hourly
         WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+        UNION ALL
+        SELECT 
+          app_id,
+          substr(crawled_at, 1, 7) as crawled_at,
+          distribution_type,
+          app_name,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon
+        FROM taptap_keywords_list_hourly
+        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
       )
       GROUP BY app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3
 trigger_type: system
