@@ -74,3 +74,6 @@ debug_steam.html
 
 # 本地临时调试文件
 tmp/
+
+# 数据库备份 / 清理日志（scripts/cleanup_unused_tables.py 生成）
+backups/
