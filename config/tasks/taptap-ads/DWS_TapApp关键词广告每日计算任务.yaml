@@ -6,28 +6,10 @@ db:
   type: sqlite
   path: "crawler.db"
   query: >
-    SELECT
-      b.*,
-      c.app_name AS app_name,
-      c.icon AS icon
-    FROM 
-    (
       SELECT 
         crawled_at,
         keyword,
         app_id,
-        SUM(total_views) as total_views,
-        SUM(CASE WHEN platform = 'android' THEN total_views ELSE 0 END) android_views,
-        SUM(CASE WHEN platform = 'ios' THEN total_views ELSE 0 END) ios_views,
-        SUM(CASE WHEN kw_type = 'discover' THEN total_views ELSE 0 END) discover_views,
-        SUM(CASE WHEN platform = 'android' AND kw_type = 'discover' THEN total_views ELSE 0 END) android_discover_views,
-        SUM(CASE WHEN platform = 'ios' AND kw_type = 'discover' THEN total_views ELSE 0 END) ios_discover_views,
-        SUM(CASE WHEN kw_type = 'hot_search' THEN total_views ELSE 0 END) hot_search_views,
-        SUM(CASE WHEN platform = 'android' AND kw_type = 'hot_search' THEN total_views ELSE 0 END) android_hot_search_views,
-        SUM(CASE WHEN platform = 'ios' AND kw_type = 'hot_search' THEN total_views ELSE 0 END) ios_hot_search_views,
-        SUM(CASE WHEN kw_type = 'hot_spot' THEN total_views ELSE 0 END) hot_spot_views,
-        SUM(CASE WHEN platform = 'android' AND kw_type = 'hot_spot' THEN total_views ELSE 0 END) android_hot_spot_views,
-        SUM(CASE WHEN platform = 'ios' AND kw_type = 'hot_spot' THEN total_views ELSE 0 END) ios_hot_spot_views,
         SUM(ad_views) as ad_views,
         SUM(CASE WHEN platform = 'android' THEN ad_views ELSE 0 END) android_ad_views,
         SUM(CASE WHEN platform = 'ios' THEN ad_views ELSE 0 END) ios_ad_views,
@@ -46,7 +28,6 @@ db:
           'discover' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_discovery_ad_hourly
@@ -59,7 +40,6 @@ db:
           'hot_search' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_hot_search_ad_hourly
@@ -72,7 +52,6 @@ db:
           'hot_spot' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_search_hot_spot_ad_hourly
@@ -85,7 +64,6 @@ db:
           'discover' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_discovery_ad_hourly
@@ -98,7 +76,6 @@ db:
           'hot_search' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_hot_search_ad_hourly
@@ -111,7 +88,6 @@ db:
           'hot_spot' as kw_type,
           keyword,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'ad' THEN 1 ELSE 0 END) AS ad_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_search_hot_spot_ad_hourly
@@ -120,59 +96,18 @@ db:
         GROUP BY substr(crawled_at, 1, 10), keyword, app_id
       ) a
       GROUP BY crawled_at, keyword, app_id
-    ) b
-    LEFT JOIN
-      (
-        SELECT 
-          distribution_type,
-          tag_1,
-          tag_2,
-          tag_3,
-          app_name,
-          app_id,
-          icon
-        FROM dws_taptap_game
-        WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
-      ) c
-    ON 
-      b.app_id = c.app_id
 trigger_type: system
 schedule: "20 * * * *"
 outputs:
-  - target_table: "dws_taptap_app_keywords_ad_v2_daily"
+  - target_table: "dws_taptap_ad_keywords_app_v4_daily"
     table_schema:
       columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
         - name: keyword
           type: TEXT
         - name: app_id
-          type: INTEGER
-        - name: app_name
-          type: TEXT
-        - name: icon
-          type: TEXT
-        - name: total_views
-          type: INTEGER
-        - name: android_views
-          type: INTEGER
-        - name: ios_views
-          type: INTEGER
-        - name: discover_views
-          type: INTEGER
-        - name: android_discover_views
-          type: INTEGER
-        - name: ios_discover_views
-          type: INTEGER
-        - name: hot_search_views
-          type: INTEGER
-        - name: android_hot_search_views
-          type: INTEGER
-        - name: ios_hot_search_views
-          type: INTEGER
-        - name: hot_spot_views
-          type: INTEGER
-        - name: android_hot_spot_views
-          type: INTEGER
-        - name: ios_hot_spot_views
           type: INTEGER
         - name: ad_views
           type: INTEGER
@@ -201,7 +136,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_app_keywords_ad_v2_daily
+        - name: idx_uk_dws_taptap_ad_keywords_app_v4_daily
           columns: [crawled_at, app_id, keyword]
           unique: true
     parser:
@@ -212,46 +147,6 @@ outputs:
         - name: app_id
           source: app_id
           default: 0
-        - name: app_name
-          source: app_name
-        - name: icon
-          source: icon
-        - name: total_views
-          source: total_views
-          to_number: true
-        - name: android_views
-          source: android_views
-          to_number: true 
-        - name: ios_views
-          source: ios_views
-          to_number: true 
-        - name: discover_views
-          source: discover_views
-          to_number: true
-        - name: android_discover_views
-          source: android_discover_views
-          to_number: true 
-        - name: ios_discover_views
-          source: ios_discover_views
-          to_number: true 
-        - name: hot_search_views
-          source: hot_search_views
-          to_number: true
-        - name: android_hot_search_views
-          source: android_hot_search_views
-          to_number: true 
-        - name: ios_hot_search_views
-          source: ios_hot_search_views
-          to_number: true 
-        - name: hot_spot_views
-          source: hot_spot_views
-          to_number: true
-        - name: android_hot_spot_views
-          source: android_hot_spot_views
-          to_number: true 
-        - name: ios_hot_spot_views
-          source: ios_hot_spot_views
-          to_number: true 
         - name: ad_views
           source: ad_views
           to_number: true 

@@ -8,10 +8,6 @@ db:
   query: >
     SELECT
       crawled_at AS crawled_at,
-      SUM(total_views) AS total_views,
-      SUM(app_views) AS app_views,
-      SUM(pc_views) AS pc_views,
-      SUM(kw_views) AS kw_views,
       SUM(ad_views) AS ad_views,
       SUM(app_ad_views) AS app_ad_views,
       SUM(pc_ad_views) AS pc_ad_views,
@@ -21,7 +17,7 @@ db:
       SUM(pc_pcebid_views) AS pc_pcebid_views,
       SUM(kw_pcebid_views) AS kw_pcebid_views
     FROM
-      dws_taptap_ad_aggr_v4_daily
+      dws_taptap_ad_aggr_v5_daily
     WHERE 
       crawled_at >= '{days_ago:15}'
     GROUP BY
@@ -29,20 +25,12 @@ db:
 trigger_type: system
 schedule: "29 * * * *"
 outputs:
-  - target_table: "dws_taptap_ad_overview_v4_daily"
+  - target_table: "dws_taptap_ad_overview_v5_daily"
     table_schema:
       columns:
         - name: id
           type: INTEGER
           constraint: PRIMARY KEY AUTOINCREMENT
-        - name: total_views
-          type: INTEGER
-        - name: app_views
-          type: INTEGER
-        - name: pc_views
-          type: INTEGER
-        - name: kw_views
-          type: INTEGER
         - name: ad_views
           type: INTEGER
         - name: app_ad_views
@@ -62,24 +50,12 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_ad_overview_v4_daily
+        - name: idx_uk_dws_taptap_ad_overview_v5_daily
           columns: [crawled_at]
           unique: true
     parser:
       type: sdk_mapping
       fields:
-        - name: total_views
-          source: total_views
-          to_number: true
-        - name: app_views
-          source: app_views
-          to_number: true 
-        - name: pc_views
-          source: pc_views
-          to_number: true   
-        - name: kw_views
-          source: kw_views
-          to_number: true    
         - name: ad_views
           source: ad_views
           to_number: true 

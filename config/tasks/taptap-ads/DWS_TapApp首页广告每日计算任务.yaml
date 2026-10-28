@@ -9,28 +9,17 @@ db:
     SELECT
       b.crawled_at AS crawled_at,
       b.app_id AS app_id, 
-      c.app_name AS app_name,
-      c.tag_1 AS tag_1,
-      c.tag_2 AS tag_2,
-      c.tag_3 AS tag_3,
-      c.icon AS icon,
-      c.distribution_type AS distribution_type,
-      b.total_views,
-      b.android_views,
-      b.ios_views,
       b.ad_views,
       b.android_ad_views,
       b.ios_ad_views,
       b.pcebid_views,
       b.android_pcebid_views,
       b.ios_pcebid_views
-    FROM(
+    FROM
+    (
       SELECT 
         crawled_at,
         app_id,
-        SUM(total_views) as total_views,
-        SUM(CASE WHEN platform = 'android' THEN total_views ELSE 0 END) android_views,
-        SUM(CASE WHEN platform = 'ios' THEN total_views ELSE 0 END) ios_views,
         SUM(ad_views) as ad_views,
         SUM(CASE WHEN platform = 'android' THEN ad_views ELSE 0 END) android_ad_views,
         SUM(CASE WHEN platform = 'ios' THEN ad_views ELSE 0 END) ios_ad_views,
@@ -41,65 +30,38 @@ db:
         SELECT 
           'android' as platform,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_views,
           SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) = '{today}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+        AND position <= 10
+        AND (is_ad = 'True' OR pcebid = 'pcebid')
         GROUP BY substr(crawled_at, 1, 10), app_id
         UNION ALL
         SELECT 
           'ios' as platform,
           app_id,
-          COUNT(*) AS total_views,
           SUM(CASE WHEN is_ad = 'True' THEN 1 ELSE 0 END) AS ad_views,
           SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) = '{today}'
+        WHERE substr(crawled_at, 1, 10) >= '{days_ago:15}'
+        AND position <= 10
+        AND (is_ad = 'True' OR pcebid = 'pcebid')
         GROUP BY substr(crawled_at, 1, 10), app_id) a
-      GROUP BY crawled_at, app_id) b
-    LEFT JOIN
-      (
-        SELECT 
-          distribution_type,
-          tag_1,
-          tag_2,
-          tag_3,
-          app_name,
-          app_id,
-          icon
-        FROM dws_taptap_game
-        WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
-      ) c
-    ON 
-      b.app_id = c.app_id
+      GROUP BY crawled_at, app_id
+    ) b
 trigger_type: system
 schedule: "23 * * * *"
 outputs:
-  - target_table: "dws_taptap_app_landing_ad_daily"
+  - target_table: "dws_taptap_ad_landing_app_v4_daily"
     table_schema:
       columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
         - name: app_id
-          type: INTEGER
-        - name: app_name
-          type: TEXT
-        - name: tag_1
-          type: TEXT
-        - name: tag_2
-          type: TEXT
-        - name: tag_3
-          type: TEXT
-        - name: icon
-          type: TEXT
-        - name: distribution_type
-          type: INTEGER
-        - name: total_views
-          type: INTEGER
-        - name: android_views
-          type: INTEGER
-        - name: ios_views
           type: INTEGER
         - name: ad_views
           type: INTEGER
@@ -116,7 +78,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_app_landing_ad_daily_crawled_at_app_id
+        - name: idx_uk_dws_taptap_ad_landing_app_v4_daily
           columns: [crawled_at, app_id]
           unique: true
     parser:
@@ -125,28 +87,6 @@ outputs:
         - name: app_id
           source: app_id
           to_number: true 
-        - name: app_name
-          source: app_name
-        - name: tag_1
-          source: tag_1     
-        - name: tag_2
-          source: tag_2
-        - name: tag_3
-          source: tag_3
-        - name: icon
-          source: icon
-        - name: distribution_type
-          source: distribution_type
-          to_number: true   
-        - name: total_views
-          source: total_views
-          to_number: true
-        - name: android_views
-          source: android_views
-          to_number: true 
-        - name: ios_views
-          source: ios_views
-          to_number: true   
         - name: ad_views
           source: ad_views
           to_number: true 

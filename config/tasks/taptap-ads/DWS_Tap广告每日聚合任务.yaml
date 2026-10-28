@@ -17,17 +17,13 @@ db:
         a.app_id AS app_id, 
         CASE 
           WHEN b.app_name IS NOT NULL THEN b.app_name 
-          ELSE a.app_name
+          ELSE '-'
         END AS app_name,
         b.tag_1 AS tag_1,
         b.tag_2 AS tag_2,
         b.tag_3 AS tag_3,
         b.icon AS icon,
         b.distribution_type AS distribution_type,
-        total_views,
-        app_views,
-        pc_views,
-        kw_views,
         ad_views,
         app_ad_views,
         pc_ad_views,
@@ -41,11 +37,6 @@ db:
         SELECT
           crawled_at, 
           app_id,
-          app_name,
-          SUM(total_views) AS total_views,
-          SUM(CASE WHEN src = 'app' THEN total_views ELSE 0 END) AS app_views,
-          SUM(CASE WHEN src = 'pc' THEN total_views ELSE 0 END) AS pc_views,
-          SUM(CASE WHEN src = 'kw' THEN total_views ELSE 0 END) AS kw_views,
           SUM(ad_views) AS ad_views,
           SUM(CASE WHEN src = 'app' THEN ad_views ELSE 0 END) AS app_ad_views,
           SUM(CASE WHEN src = 'pc' THEN ad_views ELSE 0 END) AS pc_ad_views,
@@ -58,38 +49,32 @@ db:
         (
           SELECT
             'app' AS src,
-            app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
-            total_views,
             ad_views,
             pcebid_views
-          FROM dws_taptap_app_landing_ad_daily
+          FROM dws_taptap_ad_landing_app_v4_daily
           WHERE crawled_at >= '{days_ago:15}'
           UNION ALL 
           SELECT
             'pc' AS src,
-            app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
-            total_views,
             ad_views,
             0 as pcebid_views
-          FROM dws_taptap_pc_ad_landing_daily
+          FROM dws_taptap_ad_landing_pc_v4_daily
           WHERE crawled_at >= '{days_ago:15}'
           UNION ALL
           SELECT
             'kw' AS src,
-            keyword as app_name,
             crawled_at AS crawled_at,
             app_id AS app_id, 
-            total_views,
             ad_views,
             0 as pcebid_views
-          FROM dws_taptap_app_keywords_ad_v2_daily
+          FROM dws_taptap_ad_keywords_app_v4_daily
           WHERE crawled_at >= '{days_ago:15}'
         )
-        GROUP BY crawled_at, app_id, app_name
+        GROUP BY crawled_at, app_id
       ) a
       LEFT JOIN
         (
@@ -111,9 +96,12 @@ db:
 trigger_type: system
 schedule: "26 * * * *"
 outputs:
-  - target_table: "dws_taptap_ad_aggr_v4_daily"
+  - target_table: "dws_taptap_ad_aggr_v5_daily"
     table_schema:
       columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
         - name: app_id
           type: INTEGER
         - name: app_name
@@ -127,14 +115,6 @@ outputs:
         - name: icon
           type: TEXT
         - name: distribution_type
-          type: INTEGER
-        - name: total_views
-          type: INTEGER
-        - name: app_views
-          type: INTEGER
-        - name: pc_views
-          type: INTEGER
-        - name: kw_views
           type: INTEGER
         - name: ad_views
           type: INTEGER
@@ -155,7 +135,7 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_ad_aggr_v4_daily
+        - name: idx_uk_dws_taptap_ad_aggr_v5_daily
           columns: [crawled_at, app_id, app_name]
           unique: true
     parser:
@@ -179,18 +159,6 @@ outputs:
         - name: distribution_type
           source: distribution_type
           to_number: true
-        - name: total_views
-          source: total_views
-          to_number: true
-        - name: app_views
-          source: app_views
-          to_number: true 
-        - name: pc_views
-          source: pc_views
-          to_number: true   
-        - name: kw_views
-          source: kw_views
-          to_number: true    
         - name: ad_views
           source: ad_views
           to_number: true 
