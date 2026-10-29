@@ -917,6 +917,81 @@ parser:
 
 > 遍历索引也会注入字段上下文，可用 `value: "{index}"` 引用（0-based）。
 
+#### 翻页时让 index 跨页连续计数（page_size / index_offset）
+
+默认 `index` 每页从 0 重新数：第 2 页还是 1, 2, 3…。对「广告位置」「榜单排名」
+这类需要跨页连续、且有唯一索引 `(crawled_at, position)` 的表会撞键。
+
+两种解法：
+
+1. **配 `page_size`**（推荐）——与 `iterate` 的 `page` 变量自动配合，
+   偏移 = `(page - 1) * page_size`：
+
+```yaml
+iterate:
+  - var_name: "page"
+    values: [1, 2, 3]
+url: "https://api.example.com/list?kw={keyword}&page={page}"
+outputs:
+  - parser:
+      type: json
+      root_path: "data.list"
+      page_size: 20            # 每页 20 条 → 第 1 页 1..20，第 2 页 21..40
+      fields:
+        - name: position
+          index: 1             # 1-based，跨页连续
+          to_number: true
+```
+
+2. **直接给偏移**——页面大小不固定、或页面参数不是递增整数时用：
+
+```yaml
+parser:
+  index_offset: "{page_start}" # 支持模板；也可写死数字
+```
+
+优先级：`parser.index_offset` > `context['index_offset']`（iterate 传同名变量）>
+`page_size × (page - 1)` > 0。偏移只影响 `index` 字段和 `{index}` 模板，
+不影响 `array_index_mapping` 的 `position`（那是列下标）。
+
+> 注意：`page_size` 要等于接口实际返回的每页条数（含所有条目，不只是广告位），
+> 否则跨页位置会错位。
+
+#### 会话式翻页（pagination）—— 需要 session_id 的推荐流接口
+
+有些接口不是无状态分页：**第 1 页请求不带偏移**，响应里给出一个 `session_id`
+（通常藏在 `data.next_page` 的 query 里），后续页必须带**同一个** `session_id`，
+否则服务端每次重新随机推荐，翻页结果大量重叠。这类接口用 `pagination:` 声明，
+引擎会自动完成「取会话 → 逐页偏移 → 每页注入 `index_offset`」：
+
+```yaml
+pagination:
+  offset_param: "from"              # 偏移参数名（默认 from）
+  limit: 10                         # 每页条数，用来算第 N 页偏移
+  max_pages: 3                      # 最多翻几页（第 1 页 + 2 页）
+  session_param: "session_id"       # 会话参数名（默认 session_id）
+  session_from: "data.next_page"    # 第 1 页响应里取会话值的点分路径
+
+url: "https://api.example.com/timeline?X-UA=...&limit=10&rec_tag="
+```
+
+实际发出的请求：
+
+| 页 | URL |
+|---|---|
+| 1 | 任务里的 `url` 原样（不带 `from`） |
+| 2 | `...&from=10&limit=10&session_id=<第 1 页拿到的>` |
+| 3 | `...&from=20&limit=10&session_id=<同一个>` |
+
+要点：
+
+- `session_from` 指向的值可以是会话字符串本身（如 `data.session_id`），也可以是
+  一个 URL（如 `data.next_page`）—— 是 URL 时自动取其中 `session_param` 那个查询参数。
+- 每页的 `index_offset`（0、10、20…）由引擎写进 context，parse 时 `index`
+  字段自动叠加，**不需要**再在 parser 里写 `index_offset`。
+- 某页响应里没有 `session_from` 指向的字段、或该页抓取失败时自动停止翻页。
+- `pagination` 与 `iterate` 可同时使用：每个 iterate 组合各自走一遍翻页。
+
 ### JSON 二维数组（array_index_mapping）
 
 API 返回 `[[ts1, val1], [ts2, val2], ...]`——每个元素是数组而不是对象：

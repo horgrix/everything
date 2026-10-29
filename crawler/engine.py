@@ -10,6 +10,13 @@ import asyncio
 import logging
 import itertools
 from .dedup import URLDedup
+from .pagination import (
+    build_page_url,
+    extract_session,
+    extract_value,
+    page_offset,
+    resolve_pagination,
+)
 from .params import ParamResolver
 from .pipeline import DataPipeline, PipelineResult
 from .template import URLTemplate
@@ -119,27 +126,27 @@ class CrawlerEngine:
             # Resolve template variables in all context values before fetch
             ctx = self._resolve_all_templates(ctx)
 
-            # 1. Fetch raw data via SourceRegistry
+            # 1. Fetch raw data（配置了 pagination 时逐页抓取）
             try:
-                raw_data = await self._fetch_data(task_config, ctx)
+                pages = await self._fetch_pages(
+                    task_config, ctx, request_interval
+                )
             except Exception as e:
                 logger.error("[%d/%d] Fetch failed: %s", idx + 1, len(contexts), e)
                 error_msg = str(e)
                 continue
 
-            if raw_data is None:
-                continue
-
-            last_raw_data = raw_data
-
-            # 组级文件日志：成功后写 data.log（仅 logging.data 开启时）
-            await self._log_data(task_config, raw_data)
-
             # 2. Expand outputs + process each via pipeline（sink 内部自行缓冲）
-            for output_config in outputs:
-                total += await self._pipeline.process_async(
-                    raw_data, output_config, db, ctx,
-                )
+            for raw_data, page_ctx in pages:
+                last_raw_data = raw_data
+
+                # 组级文件日志：成功后写 data.log（仅 logging.data 开启时）
+                await self._log_data(task_config, raw_data)
+
+                for output_config in outputs:
+                    total += await self._pipeline.process_async(
+                        raw_data, output_config, db, page_ctx,
+                    )
 
         # 3. 循环结束后 flush 每个 output 的 sink 缓冲
         total += await self._pipeline.flush_outputs(outputs, base_context, db)
@@ -227,6 +234,74 @@ class CrawlerEngine:
     # ================================================================
     # Data fetch: delegated to SourceRegistry (no if-else)
     # ================================================================
+
+    async def _fetch_pages(
+        self, task_config: dict, ctx: dict, request_interval: float = 0.0,
+    ) -> list[tuple]:
+        """抓取一个 context 的全部页；未配置 pagination 时就是一次请求。
+
+        配置了 pagination 时：第 1 页用任务原有 url（不带偏移），从响应里取出
+        session（如 ``data.next_page`` 里的 session_id），再按 offset + session
+        抓后续页；每页把 ``index_offset`` 写进 context，供 parser 的 index 字段
+        跨页连续计数。
+
+        返回 ``[(raw_data, page_ctx), ...]``。
+        """
+        page_cfg = resolve_pagination(task_config)
+        if not page_cfg:
+            raw_data = await self._fetch_data(task_config, ctx)
+            return [] if raw_data is None else [(raw_data, ctx)]
+
+        pages: list[tuple] = []
+        raw_data = await self._fetch_data(task_config, ctx)
+        if raw_data is None:
+            return []
+        pages.append((raw_data, {**ctx, "page": "1", "index_offset": 0}))
+
+        if not page_cfg["session_from"]:
+            return pages
+
+        session = extract_session(
+            raw_data, page_cfg["session_from"], page_cfg["session_param"]
+        )
+        if not session:
+            logger.warning(
+                "Pagination: 第 1 页响应里没取到 session（%s），只抓第 1 页",
+                page_cfg["session_from"],
+            )
+            return pages
+
+        base_url = ctx.get("url", "")
+        for page in range(2, page_cfg["max_pages"] + 1):
+            pause = page_cfg["interval"] or request_interval
+            if pause > 0:
+                await asyncio.sleep(pause)
+
+            offset = page_offset(page, page_cfg["limit"])
+            url = build_page_url(base_url, {
+                page_cfg["offset_param"]: offset,
+                page_cfg["limit_param"]: page_cfg["limit"],
+                page_cfg["session_param"]: session,
+            })
+            page_ctx = {
+                **ctx, "url": url, "page": str(page), "index_offset": offset,
+            }
+            try:
+                raw = await self._fetch_data(task_config, page_ctx)
+            except Exception as e:
+                logger.warning("Pagination: 第 %d 页抓取失败：%s", page, e)
+                break
+            if raw is None:
+                break
+
+            pages.append((raw, page_ctx))
+
+            # 响应里不再带 next_page/会话 → 说明到底了
+            if not extract_value(raw, page_cfg["session_from"]):
+                logger.info("Pagination: 第 %d 页已无 next_page，停止翻页", page)
+                break
+
+        return pages
 
     async def _fetch_data(self, task_config: dict, ctx: dict):
         """

@@ -168,6 +168,12 @@ class ParserConfig(_ConfigBase):
     @property
     def array_index_mapping(self) -> bool:
         return self._raw.get("array_index_mapping", False)
+
+    # 分页：page_size 与 iterate 的 page 变量配合，让 index 字段跨页连续计数
+    @property
+    def page_size(self) -> int | None: return self._raw.get("page_size")
+    @property
+    def index_offset(self) -> int | str | None: return self._raw.get("index_offset")
     @property
     def element_selector(self) -> dict: return self._raw.get("element_selector", {})
     @property
@@ -263,6 +269,10 @@ class TaskConfig(_ConfigBase):
 
     @property
     def params(self) -> dict: return self._raw.get("params", {})
+
+    # 会话式翻页：第 1 页拿 session，后续页带 offset + session 继续翻
+    @property
+    def pagination(self) -> dict: return self._raw.get("pagination", {})
 
     @property
     def iterate(self) -> list[IterateVar]:

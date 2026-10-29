@@ -166,6 +166,9 @@ class Parser:
         parser_type = parser_config.get("type", "json")
         fields = parser_config.get("fields", [])
 
+        # 翻页偏移：让 index 字段 / {index} 模板跨页连续计数（见 _resolve_index_offset）
+        index_offset = self._resolve_index_offset(parser_config, context)
+
         # 1. Row extraction — dict lookup, zero if-blocks
         extractor = self._row_extractors.get(
             parser_type, self._extract_json_rows
@@ -177,7 +180,7 @@ class Parser:
         for index, row in enumerate(raw_rows):
             # 注入遍历索引，供字段的 index 属性或 value: "{index}" 引用
             row_context = dict(context)
-            row_context["index"] = index
+            row_context["index"] = index_offset + index
             mapped = {}
             for field in fields:
                 mapped[field["name"]] = self._extract_field_value(
@@ -332,6 +335,53 @@ class Parser:
         return val
 
     @staticmethod
+    def _resolve_index_offset(parser_config: dict, context: dict) -> int:
+        """计算本次解析的翻页偏移量，让 index 字段跨页连续计数。
+
+        默认 0（每页从头数）。优先级：
+
+        1. ``parser.index_offset``（可与页面变量组合成模板，如 ``"{page_start}"``）；
+        2. ``context['index_offset']``（任务可通过 iterate 变量直接传入）；
+        3. ``parser.page_size`` + ``context['page']`` → ``(page - 1) * page_size``；
+        4. 0。
+
+        典型用法：
+
+            iterate:
+              - var_name: page
+                values: [1, 2, 3]
+            outputs:
+              - parser:
+                  page_size: 20      # 每页 20 条
+                  fields:
+                    - name: position
+                      index: 1       # → 第 1 页 1..20，第 2 页 21..40
+        """
+
+        def _to_int(value) -> int | None:
+            if isinstance(value, bool) or value is None:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        for raw in (parser_config.get("index_offset"), context.get("index_offset")):
+            if raw is None:
+                continue
+            if isinstance(raw, str):
+                raw = URLTemplate.resolve(raw, context=context)
+            offset = _to_int(raw)
+            if offset is not None:
+                return offset
+
+        page_size = _to_int(parser_config.get("page_size"))
+        page = _to_int(context.get("page"))
+        if page_size and page_size > 0 and page and page > 0:
+            return (page - 1) * page_size
+        return 0
+
+    @staticmethod
     def _cond_has_index(field: dict, _parser_config: dict) -> bool:
         return field.get("index") is not None
 
@@ -342,6 +392,9 @@ class Parser:
         - index: true  → 等价于 index: 0（0, 1, 2, …）
         - index: 0     → 0-based 列表位置
         - index: 1     → 1-based 榜单排名（1, 2, 3, …）
+
+        context['index'] 已在本页遍历索引上叠加了翻页偏移（见
+        ``_resolve_index_offset``），因此配置了分页的任务会跨页连续计数。
         """
         base = field.get("index")
         if base is True:

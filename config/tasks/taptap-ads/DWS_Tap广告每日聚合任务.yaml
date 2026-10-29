@@ -54,7 +54,7 @@ db:
             ad_views,
             pcebid_views
           FROM dws_taptap_ad_landing_app_v4_daily
-          WHERE crawled_at >= '{days_ago:7}'
+          WHERE crawled_at >= '{days_ago:1}'
           UNION ALL 
           SELECT
             'pc' AS src,
@@ -63,7 +63,7 @@ db:
             ad_views,
             0 as pcebid_views
           FROM dws_taptap_ad_landing_pc_v4_daily
-          WHERE crawled_at >= '{days_ago:7}'
+          WHERE crawled_at >= '{days_ago:1}'
           UNION ALL
           SELECT
             'kw' AS src,
@@ -72,7 +72,7 @@ db:
             ad_views,
             0 as pcebid_views
           FROM dws_taptap_ad_keywords_app_v4_daily
-          WHERE crawled_at >= '{days_ago:7}'
+          WHERE crawled_at >= '{days_ago:1}'
         )
         GROUP BY crawled_at, app_id
       ) a
