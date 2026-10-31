@@ -5,12 +5,13 @@ db:
   path: "crawler.db"
   query: >
     SELECT 
-      app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3, MAX(icon) as icon 
+      app_id,
+      strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime') AS crawled_at,
+      app_name, distribution_type, tag_1, tag_2, tag_3, MAX(icon) as icon 
     FROM
       (
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -22,7 +23,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -34,7 +34,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -46,7 +45,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -58,7 +56,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -70,7 +67,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -82,7 +78,6 @@ db:
         UNION ALL
         SELECT 
           app_id,
-          substr(crawled_at, 1, 7) as crawled_at,
           distribution_type,
           app_name,
           tag_1,
@@ -92,7 +87,7 @@ db:
         FROM taptap_keywords_list_hourly
         WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
       )
-      GROUP BY app_id, crawled_at, app_name, distribution_type, tag_1, tag_2, tag_3
+      GROUP BY app_id, app_name, distribution_type, tag_1, tag_2, tag_3
 trigger_type: system
 schedule: "15 * * * *"
 outputs:
@@ -117,10 +112,10 @@ outputs:
         - name: icon
           type: TEXT
         - name: crawled_at
-          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m', 'now', 'localtime'))
+          type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S', 'now', 'localtime'))
       indexes:
         - name: idx_uk_dws_taptap_game_app_id_crawled_at
-          columns: [crawled_at, app_id]
+          columns: [app_id]
           unique: true
     parser:
       type: sdk_mapping

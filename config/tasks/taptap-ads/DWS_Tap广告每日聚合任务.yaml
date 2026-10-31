@@ -79,15 +79,16 @@ db:
       LEFT JOIN
         (
           SELECT 
+            app_id,
+            app_name,
             distribution_type,
             tag_1,
             tag_2,
             tag_3,
-            app_name,
-            app_id,
-            icon
+            MAX(icon) AS icon,
+            MAX(crawled_at) AS _last_seen
           FROM dws_taptap_game
-          WHERE crawled_at = strftime('%Y-%m', 'now', 'localtime')
+          GROUP BY app_id          -- 维表若还是旧结构（一 app 多行），这里收敛成一行，避免 join 出重复
         ) b
       ON 
         a.app_id = b.app_id
