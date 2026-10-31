@@ -17,7 +17,7 @@ db:
       SUM(pc_pcebid_views) AS pc_pcebid_views,
       SUM(kw_pcebid_views) AS kw_pcebid_views
     FROM
-      dws_taptap_ad_aggr_v5_daily
+      dws_taptap_ad_aggr_v6_daily
     WHERE 
       crawled_at >= '{days_ago:1}'
     GROUP BY

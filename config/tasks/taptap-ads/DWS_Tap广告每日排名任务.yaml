@@ -29,7 +29,7 @@ db:
         (kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY crawled_at ORDER BY (ad_views + pcebid_views) DESC) AS ad_rank
       FROM
-        dws_taptap_ad_aggr_v5_daily
+        dws_taptap_ad_aggr_v6_daily
       WHERE 
         crawled_at = '{today}'
       UNION ALL
@@ -44,7 +44,7 @@ db:
         SUM(kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%W', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
-        dws_taptap_ad_aggr_v5_daily
+        dws_taptap_ad_aggr_v6_daily
       WHERE 
         strftime('%Y-%W', crawled_at, 'localtime') = strftime('%Y-%W', 'now', 'localtime')
       GROUP BY
@@ -61,7 +61,7 @@ db:
         SUM(kw_ad_views + kw_pcebid_views) AS total_kv_ad_views,
         ROW_NUMBER() OVER (PARTITION BY strftime('%Y-%m', crawled_at, 'localtime') ORDER BY SUM(ad_views + pcebid_views) DESC) AS ad_rank
       FROM
-        dws_taptap_ad_aggr_v5_daily
+        dws_taptap_ad_aggr_v6_daily
       WHERE 
         strftime('%Y-%m', crawled_at, 'localtime') = strftime('%Y-%m', 'now', 'localtime')
       GROUP BY

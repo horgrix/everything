@@ -54,7 +54,7 @@ db:
             ad_views,
             pcebid_views
           FROM dws_taptap_ad_landing_app_v4_daily
-          WHERE crawled_at >= '{days_ago:1}'
+          WHERE crawled_at >= '{days_ago:30}'
           UNION ALL 
           SELECT
             'pc' AS src,
@@ -63,7 +63,7 @@ db:
             ad_views,
             0 as pcebid_views
           FROM dws_taptap_ad_landing_pc_v4_daily
-          WHERE crawled_at >= '{days_ago:1}'
+          WHERE crawled_at >= '{days_ago:30}'
           UNION ALL
           SELECT
             'kw' AS src,
@@ -72,7 +72,7 @@ db:
             ad_views,
             0 as pcebid_views
           FROM dws_taptap_ad_keywords_app_v4_daily
-          WHERE crawled_at >= '{days_ago:1}'
+          WHERE crawled_at >= '{days_ago:30}'
         )
         GROUP BY crawled_at, app_id
       ) a
@@ -96,7 +96,7 @@ db:
 trigger_type: system
 schedule: "26 * * * *"
 outputs:
-  - target_table: "dws_taptap_ad_aggr_v5_daily"
+  - target_table: "dws_taptap_ad_aggr_v6_daily"
     table_schema:
       columns:
         - name: id
@@ -135,8 +135,8 @@ outputs:
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_ad_aggr_v5_daily
-          columns: [crawled_at, app_id, app_name]
+        - name: idx_uk_dws_taptap_ad_aggr_v6_daily
+          columns: [crawled_at, app_id]
           unique: true
     parser:
       type: sdk_mapping

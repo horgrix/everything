@@ -52,7 +52,16 @@ def main() -> None:
 
     conn = sqlite3.connect(DB_PATH)
     try:
+        existing = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
         for table, fmt, modifier in RULES:
+            if table not in existing:
+                print(f"表 '{table}' 不存在，跳过")
+                continue
             before = conn.execute(
                 f"SELECT COUNT(*) FROM {table}"
             ).fetchone()[0]
