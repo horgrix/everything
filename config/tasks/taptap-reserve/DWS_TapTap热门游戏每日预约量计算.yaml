@@ -1,0 +1,54 @@
+name: "DWS_TapTap热门游戏每日预约量计算"
+depends_on:
+  - "DWS_TapTap热门游戏每小时预约量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      app_id,
+      app_name,
+      substr(crawled_at, 1, 10) as crawled_at,
+      icon,
+      SUM(reserve_count) AS reserve_count
+    FROM dws_taptap_reserve_hourly
+    GROUP BY substr(crawled_at, 1, 10), app_id, app_name, icon
+trigger_type: system
+schedule: "5 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_reserve_daily"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: icon
+          type: TEXT
+        - name: reserve_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_reserve_daily
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true   
+        - name: app_name
+          source: app_name 
+        - name: icon
+          source: icon     
+        - name: reserve_count
+          source: reserve_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

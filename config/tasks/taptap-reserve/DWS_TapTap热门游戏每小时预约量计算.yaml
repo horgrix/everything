@@ -1,0 +1,66 @@
+name: "DWS_TapTap热门游戏每小时预约量计算"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      *
+    FROM
+    (
+      SELECT 
+        app_id,
+        app_name,
+        crawled_at,
+        icon,
+        reserve_count as total_reserve_count,
+        reserve_count - LAG(reserve_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS reserve_count
+      FROM taptap_reserve_hourly
+      WHERE app_id IS NOT NULL
+      AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
+      ORDER BY app_id, crawled_at DESC
+    )
+    WHERE reserve_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+trigger_type: system
+schedule: "5 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_reserve_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: icon
+          type: TEXT
+        - name: total_reserve_count
+          type: INTEGER
+        - name: reserve_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_reserve_hourly
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true   
+        - name: app_name
+          source: app_name 
+        - name: icon
+          source: icon     
+        - name: total_reserve_count
+          source: total_reserve_count
+          to_number: true
+        - name: reserve_count
+          source: reserve_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at
