@@ -11,6 +11,7 @@ import os
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -45,6 +46,17 @@ def create_app(config_dir: str = None, db_path: str = None, scheduler=None) -> F
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # JSON 响应压缩：nginx 默认 gzip_types 只有 text/html，application/json 不会被压，
+    # 而数据接口有一条 250KB+ 的映射查询，这里直接在应用层压（响应带 CORS 头也不影响）。
+    # 浏览器默认会发 Accept-Encoding: gzip，压缩后自动带 Content-Encoding / Content-Length。
+    # compresslevel 用 6：相比默认的 9，250KB JSON 只多 1.7KB，CPU 从 ~7.6ms 降到 ~3.8ms。
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+
+    # 只读 SQL 查询结果缓存（默认 TTL 60s，写接口会清空）
+    from .query_cache import QueryCache
+
+    app.state.query_cache = QueryCache.from_env()
 
     # 懒加载数据库连接（避免导入时就连接）
     from storage.database import Database

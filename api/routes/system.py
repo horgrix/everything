@@ -110,3 +110,11 @@ async def health_check():
         "message": "success",
         "data": {"status": "healthy"},
     }
+
+
+@router.get("/query-cache")
+async def query_cache_stats(request: Request):
+    """只读 SQL 查询缓存的命中情况（TTL / 条数 / 字节数 / 命中率）。"""
+    cache = getattr(request.app.state, "query_cache", None)
+    data = cache.stats() if cache is not None else {"enabled": False}
+    return {"code": 0, "message": "success", "data": data}

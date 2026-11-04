@@ -4,7 +4,8 @@ import json
 import re
 import logging
 import sqlite3
-from fastapi import APIRouter, Request, Query, HTTPException
+from fastapi import APIRouter, Request, Query, HTTPException, Response
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,25 @@ _READONLY_SQL_PREFIXES = {"SELECT", "WITH", "EXPLAIN", "PRAGMA"}
 
 def _get_db(request: Request):
     return request.app.state.db
+
+
+def _get_query_cache(request: Request):
+    return getattr(request.app.state, "query_cache", None)
+
+
+def _invalidate_query_cache(request: Request) -> None:
+    """写操作后清空只读 SQL 缓存，避免同进程内的写入读到旧结果。"""
+    cache = _get_query_cache(request)
+    if cache is not None:
+        cache.clear()
+
+
+def _serialize_payload(data: list, total: int) -> bytes:
+    """按 Starlette JSONResponse 的紧凑格式序列化，便于缓存与压缩。"""
+    payload = {"code": 0, "message": "success", "data": data, "total": total}
+    return json.dumps(
+        payload, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+    ).encode("utf-8")
 
 
 def _validate_table_name(name: str) -> str:
@@ -178,17 +198,37 @@ async def query_raw_sql(request: Request, body: SqlQueryRequest):
 
     仅允许 SELECT / WITH / EXPLAIN / PRAGMA 开头的只读语句，
     拒绝 INSERT / UPDATE / DELETE / DROP 等写操作。
+
+    同一 SQL 在缓存 TTL（默认 60s）内直接返回已序列化的响应体，
+    响应头 X-Cache 标记 HIT / MISS（API_QUERY_CACHE_TTL<=0 时不缓存）。
     """
     db = _get_db(request)
     sql = _validate_readonly_sql(body.sql)
+
+    cache = _get_query_cache(request)
+    if cache is not None:
+        cached = cache.get(sql)
+        if cached is not None:
+            return Response(
+                content=cached,
+                media_type="application/json",
+                headers={"X-Cache": "HIT"},
+            )
 
     try:
         rows = db.conn.execute(sql).fetchall()
     except sqlite3.Error as e:
         raise HTTPException(status_code=400, detail=f"SQL 执行失败: {e}")
 
-    data = [dict(r) for r in rows]
-    return {"code": 0, "message": "success", "data": data, "total": len(data)}
+    data = jsonable_encoder([dict(r) for r in rows])
+    payload = _serialize_payload(data, len(data))
+    if cache is not None:
+        cache.set(sql, payload)
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"X-Cache": "MISS"},
+    )
 
 
 @router.get("/{table_name}/columns")
@@ -317,6 +357,7 @@ async def update_row(
     sql = f"UPDATE {table_name} SET {set_clause} WHERE {id_column} = ?"
     db.conn.execute(sql, values)
     db.conn.commit()
+    _invalidate_query_cache(request)
 
     # Type-cast id_value for response
     try:
@@ -364,6 +405,7 @@ async def delete_row(
     sql = f"DELETE FROM {table_name} WHERE {id_column} = ?"
     cur = db.conn.execute(sql, (id_value,))
     db.conn.commit()
+    _invalidate_query_cache(request)
 
     deleted_count = cur.rowcount
     return {
@@ -420,6 +462,7 @@ async def batch_insert(
         for row in rows:
             values = [row.get(c) for c in columns]
             db.conn.execute(sql, values)
+    _invalidate_query_cache(request)
 
     after_count = db.conn.execute(
         f"SELECT COUNT(*) FROM {table_name}"
@@ -475,6 +518,7 @@ async def truncate_table(request: Request, table_name: str):
 
     db.conn.execute(f"DELETE FROM {table_name}")
     db.conn.commit()
+    _invalidate_query_cache(request)
 
     return {
         "code": 0,

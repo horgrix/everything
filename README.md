@@ -499,6 +499,7 @@ config.get("url")     # 等价于 config.url
 | `GET` | `/api/system/status` | 系统状态（任务数、表数、DB 大小） |
 | `GET` | `/api/system/dashboard` | Dashboard 聚合统计 |
 | `GET` | `/api/system/health` | 健康检查 |
+| `GET` | `/api/system/query-cache` | 只读 SQL 缓存命中情况（TTL / 条数 / 字节数 / 命中率） |
 
 ### 请求/响应格式
 
@@ -513,6 +514,23 @@ config.get("url")     # 等价于 config.url
 ```json
 {"code": -1, "message": "错误描述", "data": null}
 ```
+
+### 传输优化（gzip + 只读 SQL 缓存）
+
+- **JSON gzip**：应用层挂了 `GZipMiddleware`（`minimum_size=1024`, `compresslevel=6`），
+  不依赖 nginx 的 `gzip_types`（其默认只含 `text/html`）。客户端带
+  `Accept-Encoding: gzip` 时响应会带 `Content-Encoding: gzip` 与 `Vary: Accept-Encoding`，
+  实测 277KB 的 JSON → 65.6KB（-76%）。CORS 头不受影响。
+- **只读 SQL 缓存**：`POST /api/data/sql` 的响应体按 SQL 原文缓存到内存，
+  命中时跳过 SQL 执行与 JSON 序列化；响应头 `X-Cache: HIT|MISS` 便于观测。
+  任何写接口（批量 UPSERT / 更新 / 删除 / 清空）都会清空缓存；
+  进程外写入（爬虫任务直连 SQLite）最长只会陈旧一个 TTL。
+
+| 环境变量 | 默认值 | 说明 |
+|----------|--------|------|
+| `API_QUERY_CACHE_TTL` | `60` | 缓存有效期（秒），`<=0` 关闭缓存 |
+| `API_QUERY_CACHE_MAX` | `64` | 最大缓存条目数（LRU 淘汰） |
+| `API_QUERY_CACHE_BYTES` | `33554432` | 缓存总字节上限（32MB） |
 
 ### 启动方式
 
