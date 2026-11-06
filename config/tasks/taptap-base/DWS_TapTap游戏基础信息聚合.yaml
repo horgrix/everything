@@ -40,50 +40,6 @@ db:
           tag_2,
           tag_3,
           icon
-        FROM taptap_app_android_landing_ad_hourly
-        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
-        UNION ALL
-        SELECT 
-          app_id,
-          distribution_type,
-          app_name,
-          tag_1,
-          tag_2,
-          tag_3,
-          icon
-        FROM taptap_app_ios_landing_ad_hourly
-        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
-        UNION ALL
-        SELECT 
-          app_id,
-          distribution_type,
-          app_name,
-          tag_1,
-          tag_2,
-          tag_3,
-          icon
-        FROM taptap_pc_ad_discovery_hourly
-        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
-        UNION ALL
-        SELECT 
-          app_id,
-          distribution_type,
-          app_name,
-          tag_1,
-          tag_2,
-          tag_3,
-          icon
-        FROM taptap_pc_ad_top_hourly
-        WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
-        UNION ALL
-        SELECT 
-          app_id,
-          distribution_type,
-          app_name,
-          tag_1,
-          tag_2,
-          tag_3,
-          icon
         FROM taptap_ad_list_hourly
         WHERE crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
       )

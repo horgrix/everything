@@ -26,14 +26,24 @@ def fetch_app_ids() -> list[int]:
     parts = []
     try:
         for table in TABLES:
-            rows = conn.execute(
-                f"SELECT DISTINCT app_id FROM {table} "
-                "WHERE app_id IS NOT NULL "
-                "AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime') "
-                "AND is_ad IS NOT NULL "
-                "ORDER BY app_id"
-            ).fetchall()
-            parts.extend([int(row[0]) for row in rows])
+            if table not in ["taptap_app_android_landing_ad_hourly", "taptap_app_ios_landing_ad_hourly"]:
+                rows = conn.execute(
+                    f"SELECT DISTINCT app_id FROM {table} "
+                    "WHERE app_id IS NOT NULL "
+                    "AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime') "
+                    "AND is_ad != '' "
+                    "ORDER BY app_id"
+                ).fetchall()
+                parts.extend([int(row[0]) for row in rows])
+            else:
+                rows = conn.execute(
+                    f"SELECT DISTINCT app_id FROM {table} "
+                    "WHERE app_id IS NOT NULL "
+                    "AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime') "
+                    "AND (is_ad != '' OR pcebid != '') "
+                    "ORDER BY app_id"
+                ).fetchall()
+                parts.extend([int(row[0]) for row in rows])
     finally:
         conn.close()
     return sorted(set(parts))   # 去重且保持升序（docstring 承诺的顺序，也避免每次写 yaml 顺序乱跳）
