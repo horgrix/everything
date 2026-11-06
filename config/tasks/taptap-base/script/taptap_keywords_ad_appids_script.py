@@ -14,7 +14,8 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DB_PATH = PROJECT_ROOT / "crawler.db"
 TABLES = ["taptap_app_android_search_discovery_ad_hourly", "taptap_app_android_search_hot_search_ad_hourly", "taptap_app_android_search_hot_spot_ad_hourly",
-         "taptap_app_ios_search_discovery_ad_hourly", "taptap_app_ios_search_hot_search_ad_hourly", "taptap_app_ios_search_hot_spot_ad_hourly"]
+         "taptap_app_ios_search_discovery_ad_hourly", "taptap_app_ios_search_hot_search_ad_hourly", "taptap_app_ios_search_hot_spot_ad_hourly",
+         "taptap_pc_ad_top_hourly", "taptap_pc_ad_discovery_hourly", "taptap_app_android_landing_ad_hourly", "taptap_app_ios_landing_ad_hourly"]
 YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-base/manual/TapTap搜索关键词广告关联游戏信息补全任务.yaml"
 VAR_NAME = "app_id"
 
@@ -29,12 +30,13 @@ def fetch_app_ids() -> list[int]:
                 f"SELECT DISTINCT app_id FROM {table} "
                 "WHERE app_id IS NOT NULL "
                 "AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime') "
+                "AND is_ad IS NOT NULL "
                 "ORDER BY app_id"
             ).fetchall()
             parts.extend([int(row[0]) for row in rows])
     finally:
         conn.close()
-    return parts
+    return sorted(set(parts))   # 去重且保持升序（docstring 承诺的顺序，也避免每次写 yaml 顺序乱跳）
 
 
 def update_yaml_values(app_ids: list[int]) -> None:
