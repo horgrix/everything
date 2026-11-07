@@ -85,10 +85,10 @@ db:
             tag_1,
             tag_2,
             tag_3,
-            MAX(icon) AS icon,
-            MAX(crawled_at) AS _last_seen
-          FROM dws_taptap_game
-          GROUP BY app_id          -- 维表若还是旧结构（一 app 多行），这里收敛成一行，避免 join 出重复
+            MAX(icon) AS icon
+          FROM taptap_game_info_hourly
+          WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+          GROUP BY app_id   -- 原始表是 "小时×app"，按天过滤后同一 app 会有多行，这里收敛成一行避免 join 放大
         ) b
       ON 
         a.app_id = b.app_id
