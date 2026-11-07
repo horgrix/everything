@@ -18,7 +18,7 @@ db:
     GROUP BY 
       crawled_at
 trigger_type: system
-schedule: "16 */2 * * *"
+schedule: "19 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_summary_hourly"
     table_schema:

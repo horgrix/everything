@@ -95,7 +95,7 @@ db:
     )
     WHERE (ad_views + pcebid_views) > 0
 trigger_type: system
-schedule: "13 * * * *"
+schedule: "15 * * * *"
 outputs:
   - target_table: "dws_taptap_ad_aggr_v6_daily"
     table_schema:

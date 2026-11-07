@@ -66,7 +66,7 @@ db:
     )
     WHERE total_pc_download_count + total_app_download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
-schedule: "15 */2 * * *"
+schedule: "18 */2 * * *"
 outputs:
   - target_table: "dws_taptap_download_v2_hourly"
     table_schema:
