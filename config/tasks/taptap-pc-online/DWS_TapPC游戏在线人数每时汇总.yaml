@@ -6,23 +6,18 @@ db:
   query: >
     SELECT 
       crawled_at,
-      COUNT(*) AS stat_game_cnt, 
+      COUNT(*) AS game_cnt, 
       SUM(online_players) AS online_players,
-      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN 1 ELSE 0 END) as stat_pc_emulator_game_cnt,
-      SUM(CASE WHEN list_type = 'pc_emulator_played' THEN online_players ELSE 0 END) as pc_emulator_online_players,
-      SUM(CASE WHEN list_type = 'pc_played' THEN 1 ELSE 0 END) as stat_pc_game_cnt,
-      SUM(CASE WHEN list_type = 'pc_played' THEN online_players ELSE 0 END) as pc_online_players,
-      SUM(CASE WHEN list_type = 'app_hot_creative' THEN 1 ELSE 0 END) as stat_creative_game_cnt,
-      SUM(CASE WHEN list_type = 'app_hot_creative' THEN online_players ELSE 0 END) as creative_online_players,
-      SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as stat_creative_non_game_cnt,
-      SUM(CASE WHEN distribution_type = 1 THEN online_players ELSE 0 END) as creative_non_online_players,
-      SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as stat_creative_mk_game_cnt,
-      SUM(CASE WHEN distribution_type = 2 THEN online_players ELSE 0 END) as creative_mk_online_players
+      SUM(CASE WHEN distribution_type = 0 THEN 1 ELSE 0 END) as biz_game_cnt,
+      SUM(CASE WHEN distribution_type = 0 THEN online_players ELSE 0 END) as biz_online_players,
+      SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) as mini_game_cnt,
+      SUM(CASE WHEN distribution_type = 1 THEN online_players ELSE 0 END) as mini_game_online_players,
+      SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) as tmk_game_cnt,
+      SUM(CASE WHEN distribution_type = 2 THEN online_players ELSE 0 END) as tmk_online_players
     FROM(
       SELECT
         a.crawled_at,
         a.online_players,
-        b.list_type,
         b.distribution_type
       FROM
       (
@@ -39,105 +34,77 @@ db:
       (
         SELECT
           app_id,
-          app_name,
-          tag_1,
-          tag_2,
-          tag_3,
-          distribution_type,
-          list_type
-        FROM
-          taptap_online_peak_players_ids_weekly
-        WHERE 
-          crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
+          MAX(distribution_type) AS distribution_type
+        FROM taptap_game_info_hourly
+        WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+        GROUP BY app_id      -- 原表是「小时×app」，不去重会让 join 把在线人数放大 N 倍
       ) b
       ON a.app_id = b.app_id
     ) c
     GROUP BY crawled_at
 trigger_type: system
-schedule: "15 */2 * * *"
+schedule: "25 */2 * * *"
 outputs:
-  - target_table: "dws_taptap_pc_online_peak_players_hourly"
+  - target_table: "dws_taptap_pc_online_peak_players_v2_hourly"
     table_schema:
       columns:
         - name: id
           type: INTEGER
           constraint: PRIMARY KEY AUTOINCREMENT
-        - name: stat_game_cnt
+        - name: game_cnt
           type: INTEGER
         - name: online_players
           type: INTEGER
-        - name: stat_pc_emulator_game_cnt
+        - name: biz_game_cnt
           type: INTEGER
-        - name: pc_emulator_online_players
+        - name: biz_online_players
           type: INTEGER
-        - name: stat_pc_game_cnt
+        - name: mini_game_cnt
           type: INTEGER
-        - name: pc_online_players
+        - name: mini_game_online_players
           type: INTEGER
-        - name: stat_creative_game_cnt
+        - name: tmk_game_cnt
           type: INTEGER
-        - name: creative_online_players
-          type: INTEGER
-        - name: stat_creative_non_game_cnt
-          type: INTEGER
-        - name: creative_non_online_players
-          type: INTEGER
-        - name: stat_creative_mk_game_cnt
-          type: INTEGER
-        - name: creative_mk_online_players
+        - name: tmk_online_players
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_pc_online_peak_players_hourly_crawled_at
+        - name: idx_uk_dws_taptap_pc_online_peak_players_v2_hourly
           columns: [crawled_at]
           unique: true
-        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_online_players
+        - name: idx_qy_dws_taptap_pc_online_peak_players_v2_hourly_1
           columns: [online_players]
-        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_pc_emulator_online_players
-          columns: [pc_emulator_online_players]
-        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_pc_online_players
-          columns: [pc_online_players]
-        - name: idx_qy_dws_taptap_pc_online_peak_players_hourly_creative_online_players
-          columns: [creative_online_players]
+        - name: idx_qy_dws_taptap_pc_online_peak_players_v2_hourly_2
+          columns: [mini_game_online_players]
+        - name: idx_qy_dws_taptap_pc_online_peak_players_v2_hourly_3
+          columns: [tmk_online_players]
     parser:
       type: sdk_mapping
       fields:
-        - name: stat_game_cnt
-          source: stat_game_cnt
+        - name: game_cnt
+          source: game_cnt
           to_number: true
         - name: online_players
           source: online_players
           to_number: true
-        - name: stat_pc_emulator_game_cnt
-          source: stat_pc_emulator_game_cnt
+        - name: biz_game_cnt
+          source: biz_game_cnt
           to_number: true
-        - name: pc_emulator_online_players
-          source: pc_emulator_online_players
+        - name: biz_online_players
+          source: biz_online_players
           to_number: true 
-        - name: stat_pc_game_cnt
-          source: stat_pc_game_cnt
+        - name: mini_game_cnt
+          source: mini_game_cnt
           to_number: true
-        - name: pc_online_players
-          source: pc_online_players
+        - name: mini_game_online_players
+          source: mini_game_online_players
           to_number: true 
-        - name: stat_creative_game_cnt
-          source: stat_creative_game_cnt
+        - name: tmk_game_cnt
+          source: tmk_game_cnt
           to_number: true
-        - name: creative_online_players
-          source: creative_online_players
+        - name: tmk_online_players
+          source: tmk_online_players
           to_number: true 
-        - name: stat_creative_non_game_cnt
-          source: stat_creative_non_game_cnt
-          to_number: true
-        - name: creative_non_online_players
-          source: creative_non_online_players
-          to_number: true 
-        - name: stat_creative_mk_game_cnt
-          source: stat_creative_mk_game_cnt
-          to_number: true
-        - name: creative_mk_online_players
-          source: creative_mk_online_players
-          to_number: true    
         - name: crawled_at
           source: crawled_at

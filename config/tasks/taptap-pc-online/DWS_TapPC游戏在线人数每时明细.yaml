@@ -1,4 +1,4 @@
-name: "DWS_TapPC游戏在线人数每时排名"
+name: "DWS_TapPC游戏在线人数每时明细"
 type: db
 db:
   type: sqlite
@@ -17,9 +17,7 @@ db:
         tag_2,
         tag_3,
         distribution_type,
-        list_type,
-        ROW_NUMBER() OVER (PARTITION BY list_type ORDER BY online_players DESC) AS list_type_rk,
-        ROW_NUMBER() OVER (PARTITION BY distribution_type ORDER BY online_players DESC) AS distribution_type_rk
+        icon
       FROM
       (
         SELECT
@@ -31,7 +29,7 @@ db:
           b.tag_2 as tag_2,
           b.tag_3 as tag_3,
           b.distribution_type as distribution_type,
-          b.list_type as list_type
+          b.icon as icon
         FROM(
           SELECT 
             crawled_at,
@@ -50,20 +48,18 @@ db:
               tag_2,
               tag_3,
               distribution_type,
-              list_type
-            FROM
-              taptap_online_peak_players_ids_weekly
-            WHERE 
-              crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days')
+              icon
+            FROM taptap_game_info_hourly
+            WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
         ) b
         ON
         a.app_id = b.app_id
       ) c
     ) d
 trigger_type: system
-schedule: "14 */2 * * *"
+schedule: "26 */2 * * *"
 outputs:
-  - target_table: "dws_taptap_pc_online_peak_players_rank_hourly"
+  - target_table: "dws_taptap_pc_online_peak_players_details_hourly"
     table_schema:
       columns:
         - name: id
@@ -77,23 +73,19 @@ outputs:
           type: TEXT
         - name: tag_3
           type: TEXT
+        - name: icon
+          type: TEXT
         - name: app_id
           type: INTEGER
         - name: app_name
           type: TEXT
-        - name: list_type
-          type: TEXT
         - name: online_players
-          type: INTEGER
-        - name: list_type_rk
-          type: INTEGER
-        - name: distribution_type_rk
           type: INTEGER
         - name: crawled_at
           type: TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H', 'now', 'localtime'))
       indexes:
-        - name: idx_uk_dws_taptap_pc_online_peak_players_rank_hourly
-          columns: [crawled_at, list_type, app_id]
+        - name: idx_uk_dws_taptap_pc_online_peak_players_details_hourly
+          columns: [crawled_at, app_id]
           unique: true
     parser:
       type: sdk_mapping
@@ -107,21 +99,15 @@ outputs:
           source: tag_2
         - name: tag_3
           source: tag_3
+        - name: icon
+          source: icon
         - name: app_id
           source: app_id
           to_number: true    
         - name: app_name
           source: app_name
-        - name: list_type
-          source: list_type
         - name: online_players
           source: online_players
-          to_number: true      
-        - name: list_type_rk
-          source: list_type_rk
-          to_number: true  
-        - name: distribution_type_rk
-          source: distribution_type_rk
-          to_number: true     
+          to_number: true        
         - name: crawled_at
           source: crawled_at
