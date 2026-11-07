@@ -5,7 +5,20 @@ db:
   path: "crawler.db"
   query: >
     SELECT
-      *
+      app_id,
+      app_name,
+      crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      icon,
+      total_pc_download_count + total_app_download_count AS total_download_count,
+      total_pc_download_count,
+      total_app_download_count,
+      pc_download_count + app_download_count AS download_count,
+      pc_download_count,
+      app_download_count
     FROM
     (
       SELECT 
@@ -13,14 +26,22 @@ db:
         app_name,
         crawled_at,
         distribution_type,
+        tag_1,
+        tag_2,
+        tag_3,
         icon,
-        refer,
-        total_download_count,
-        total_download_count -  CASE 
-                                  WHEN total_download_count_lag > 0 THEN total_download_count_lag
-                                  WHEN total_download_count_lag = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
-                                  ELSE total_download_count 
-                                END AS download_count
+        pc_download_count as total_pc_download_count,
+        pc_download_count -  CASE 
+                                WHEN lag_pc_download_count > 0 THEN lag_pc_download_count
+                                WHEN lag_pc_download_count = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
+                                ELSE pc_download_count 
+                              END AS pc_download_count,
+        app_download_count as total_app_download_count,
+        app_download_count -  CASE 
+                                WHEN lag_app_download_count > 0 THEN lag_app_download_count
+                                WHEN lag_app_download_count = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
+                                ELSE app_download_count 
+                              END AS app_download_count
       FROM
       (
         SELECT 
@@ -28,58 +49,26 @@ db:
           app_name,
           crawled_at,
           distribution_type,
+          tag_1,
+          tag_2,
+          tag_3,
           icon,
           released_time,
-          'pc' as refer,
-          pc_download_count as total_download_count,
-          LAG(pc_download_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) as total_download_count_lag
-        FROM taptap_pc_hot_list_hourly 
+          pc_download_count as pc_download_count,
+          LAG(pc_download_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) as lag_pc_download_count,
+          hits_total as app_download_count,
+          LAG(hits_total, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS lag_app_download_count
+        FROM taptap_game_info_hourly 
         WHERE app_id IS NOT NULL
-        AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
-      ) as t1
+        AND released_time > 0
+        AND crawled_at >= substr(datetime('now', 'localtime', '-24 hour'), 1, 13)
+      ) 
     )
-    WHERE download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
-    UNION ALL
-    SELECT
-      *
-    FROM
-    (
-      SELECT 
-        app_id,
-        app_name,
-        crawled_at,
-        distribution_type,
-        icon,
-        refer,
-        total_download_count,
-        total_download_count -  CASE 
-                                  WHEN total_download_count_lag > 0 THEN total_download_count_lag
-                                  WHEN total_download_count_lag = 0 AND strftime('%Y-%m-%d', released_time, 'unixepoch', 'localtime') = strftime('%Y-%m-%d', 'now', 'localtime') THEN 0 
-                                  ELSE total_download_count 
-                                END AS download_count
-      FROM
-      (
-        SELECT 
-          app_id,
-          app_name,
-          crawled_at,
-          distribution_type,
-          icon,
-          released_time,
-          'app' as refer,
-          hits_total as total_download_count,
-          LAG(hits_total, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) AS total_download_count_lag
-        FROM taptap_app_hot_list_hourly
-        WHERE app_id IS NOT NULL
-        AND crawled_at >= substr(datetime('now', 'localtime', '-36 hour'), 1, 13)
-        ORDER BY app_id, crawled_at DESC
-      ) as t2
-    )
-    WHERE download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    WHERE total_pc_download_count + total_app_download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
-schedule: "5 */2 * * *"
+schedule: "20 */2 * * *"
 outputs:
-  - target_table: "dws_taptap_download_hourly"
+  - target_table: "dws_taptap_download_v2_hourly"
     table_schema:
       columns:
         - name: id
@@ -91,26 +80,32 @@ outputs:
           type: TEXT
         - name: distribution_type
           type: INTEGER
-        - name: icon
+        - name: tag_1
           type: TEXT
-        - name: refer
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: icon
           type: TEXT
         - name: total_download_count
           type: INTEGER
+        - name: total_pc_download_count
+          type: INTEGER
+        - name: total_app_download_count
+          type: INTEGER
         - name: download_count
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: app_download_count
           type: INTEGER
         - name: crawled_at
           type: TEXT
       indexes:
-        - name: idx_uk_crawled_at_refer_distribution_type_app_id
-          columns: [crawled_at, refer, distribution_type, app_id]
-          unique: true
-        - name: idx_qy_crawled_at_app_id
+        - name: idx_uk_dws_taptap_download_v2_hourly
           columns: [crawled_at, app_id]
-        - name: idx_qy_crawled_at_refer_app_id
-          columns: [crawled_at, refer, app_id]
-        - name: idx_qy_crawled_at_distribution_type_app_id
-          columns: [crawled_at, distribution_type, app_id]
+          unique: true
     parser:
       type: sdk_mapping
       fields:
@@ -122,15 +117,31 @@ outputs:
         - name: distribution_type
           source: distribution_type
           to_number: true
+        - name: tag_1
+          source: tag_1
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
         - name: icon
           source: icon     
-        - name: refer
-          source: refer
         - name: total_download_count
           source: total_download_count
           to_number: true
+        - name: total_pc_download_count
+          source: total_pc_download_count
+          to_number: true
+        - name: total_app_download_count
+          source: total_app_download_count
+          to_number: true
         - name: download_count
           source: download_count
+          to_number: true
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true
+        - name: app_download_count
+          source: app_download_count
           to_number: true
         - name: crawled_at
           source: crawled_at

@@ -13,7 +13,7 @@ import yaml
 # 这样无论从哪个目录运行本脚本，都能定位到 crawler.db 和 YAML 配置。
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DB_PATH = PROJECT_ROOT / "crawler.db"
-TABLE = "taptap_online_peak_players_ids_weekly"
+TABLE = "taptap_game_info_hourly"
 YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-pc-online/manual/Tap指定游戏ID池游戏在线人数爬取任务.yaml"
 VAR_NAME = "app_id"
 
@@ -25,7 +25,7 @@ def fetch_app_ids() -> list[int]:
         rows = conn.execute(
             f"SELECT DISTINCT app_id FROM {TABLE} "
             "WHERE app_id IS NOT NULL "
-            "AND crawled_at = date('now', 'localtime', '-' || ((strftime('%w', 'now', 'localtime') + 6) % 7) || ' days') "
+            "AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime') "
             "ORDER BY app_id"
         ).fetchall()
     finally:

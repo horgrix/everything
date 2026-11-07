@@ -13,24 +13,49 @@ import yaml
 # 这样无论从哪个目录运行本脚本，都能定位到 crawler.db 和 YAML 配置。
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 DB_PATH = PROJECT_ROOT / "crawler.db"
-TABLE = "taptap_pc_hot_list_ids_hourly"
-YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-download/manual/TapPC热门游戏下载数据爬取任务.yaml"
+AD_TABLES = ["taptap_app_android_search_discovery_ad_hourly", "taptap_app_android_search_hot_search_ad_hourly", "taptap_app_android_search_hot_spot_ad_hourly",
+         "taptap_app_ios_search_discovery_ad_hourly", "taptap_app_ios_search_hot_search_ad_hourly", "taptap_app_ios_search_hot_spot_ad_hourly",
+         "taptap_pc_ad_top_hourly", "taptap_pc_ad_discovery_hourly", "taptap_app_android_landing_ad_hourly", "taptap_app_ios_landing_ad_hourly"]
+LIST_TABLES = ["taptap_list_app_hot_ids_daily", "taptap_list_pc_hot_ids_daily", "taptap_list_pc_played_ids_daily", "taptap_list_app_reserve_ids_daily"]
+YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-base/manual/TapTap游戏信息采集任务.yaml"
 VAR_NAME = "app_id"
 
 
 def fetch_app_ids() -> list[int]:
     """查询表中 crawled_at 等于当前小时的数据，对 app_id 去重后按升序返回。"""
     conn = sqlite3.connect(DB_PATH)
+    parts = []
     try:
-        rows = conn.execute(
-            f"SELECT DISTINCT app_id FROM {TABLE} "
-            "WHERE app_id IS NOT NULL "
-            "AND crawled_at = strftime('%Y-%m-%d', 'now', 'localtime') "
-            "ORDER BY app_id"
-        ).fetchall()
+        for table in LIST_TABLES:
+            rows = conn.execute(
+                f"SELECT DISTINCT app_id FROM {table} "
+                "WHERE app_id IS NOT NULL "
+                "AND crawled_at = strftime('%Y-%m-%d', 'now', 'localtime')"
+            ).fetchall()
+            parts.extend([int(row[0]) for row in rows])
+
+        for table in AD_TABLES:
+            if table not in ["taptap_app_android_landing_ad_hourly", "taptap_app_ios_landing_ad_hourly"]:
+                rows = conn.execute(
+                    f"SELECT DISTINCT app_id FROM {table} "
+                    "WHERE app_id IS NOT NULL "
+                    "AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime') "
+                    "AND is_ad != '' "
+                    "ORDER BY app_id"
+                ).fetchall()
+                parts.extend([int(row[0]) for row in rows])
+            else:
+                rows = conn.execute(
+                    f"SELECT DISTINCT app_id FROM {table} "
+                    "WHERE app_id IS NOT NULL "
+                    "AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime') "
+                    "AND (is_ad != '' OR pcebid != '') "
+                    "ORDER BY app_id"
+                ).fetchall()
+                parts.extend([int(row[0]) for row in rows])
     finally:
         conn.close()
-    return [int(row[0]) for row in rows]
+    return sorted(set(parts))   # 去重且保持升序（docstring 承诺的顺序，也避免每次写 yaml 顺序乱跳）
 
 
 def update_yaml_values(app_ids: list[int]) -> None:
@@ -64,7 +89,7 @@ def main() -> None:
 
     app_ids = fetch_app_ids()
     if not app_ids:
-        print(f"表 '{TABLE}' 中当前小时没有 app_id，未做修改")
+        print(f"表中当前小时没有 app_id，未做修改")
         return
 
     update_yaml_values(app_ids)
