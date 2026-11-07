@@ -1,4 +1,4 @@
-name: "DWS_TapTap热门游戏每小时下载量计算"
+name: "DWS_TapTap热门游戏每小时下载量明细"
 type: db
 db:
   type: sqlite

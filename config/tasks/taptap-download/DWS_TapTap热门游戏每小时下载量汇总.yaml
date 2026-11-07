@@ -1,0 +1,64 @@
+name: "DWS_TapTap热门游戏每小时下载量汇总"
+depends_on:
+  - "DWS_TapTap热门游戏每小时下载量明细"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      SUM(CASE WHEN distribution_type = 0 THEN download_count ELSE 0 END) AS biz_download_count,
+      SUM(CASE WHEN distribution_type = 1 THEN download_count ELSE 0 END) AS mini_download_count,
+      SUM(CASE WHEN distribution_type = 2 THEN download_count ELSE 0 END) AS tmk_download_count,
+      SUM(pc_download_count) AS pc_download_count,
+      SUM(app_download_count) AS app_download_count
+    FROM 
+      dws_taptap_download_v2_hourly
+    GROUP BY 
+      crawled_at
+trigger_type: system
+schedule: "15 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_download_summary_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: biz_download_count
+          type: INTEGER
+        - name: mini_download_count
+          type: INTEGER
+        - name: tmk_download_count
+          type: INTEGER
+        - name: pc_download_count
+          type: INTEGER
+        - name: app_download_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_download_summary_hourly
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: biz_download_count
+          source: biz_download_count
+          to_number: true
+        - name: mini_download_count
+          source: mini_download_count
+          to_number: true
+        - name: tmk_download_count
+          source: tmk_download_count
+          to_number: true
+        - name: pc_download_count
+          source: pc_download_count
+          to_number: true
+        - name: app_download_count
+          source: app_download_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at
