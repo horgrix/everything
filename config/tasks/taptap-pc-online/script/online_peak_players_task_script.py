@@ -25,6 +25,7 @@ def fetch_app_ids() -> list[int]:
         rows = conn.execute(
             f"SELECT DISTINCT app_id FROM {TABLE} "
             "WHERE app_id IS NOT NULL "
+            "AND released_time > 0 "
             "AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime') "
             "ORDER BY app_id"
         ).fetchall()

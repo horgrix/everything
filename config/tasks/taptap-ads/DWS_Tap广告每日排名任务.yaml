@@ -69,7 +69,7 @@ db:
     )
     WHERE ad_rank <= 20
 trigger_type: system
-schedule: "8 * * * *"
+schedule: "15 * * * *"
 outputs:
   - target_table: "dws_taptap_ad_rank_v4_daily"
     table_schema:

@@ -95,7 +95,7 @@ db:
       ) a
       GROUP BY crawled_at, keyword, app_id
 trigger_type: system
-schedule: "5 * * * *"
+schedule: "9 * * * *"
 outputs:
   - target_table: "dws_taptap_ad_keywords_app_v4_daily"
     table_schema:
