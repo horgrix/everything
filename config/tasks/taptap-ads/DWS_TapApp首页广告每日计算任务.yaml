@@ -32,7 +32,7 @@ db:
           SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_android_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:1}'
+        WHERE substr(crawled_at, 1, 10) = '{today}'
         AND position <= 20
         AND (is_ad = 'True' OR pcebid = 'pcebid')
         GROUP BY substr(crawled_at, 1, 10), app_id
@@ -44,7 +44,7 @@ db:
           SUM(CASE WHEN pcebid = 'pcebid' THEN 1 ELSE 0 END) AS pcebid_views,
           substr(crawled_at, 1, 10) as crawled_at
         FROM taptap_app_ios_landing_ad_hourly
-        WHERE substr(crawled_at, 1, 10) >= '{days_ago:1}'
+        WHERE substr(crawled_at, 1, 10) = '{today}'
         AND position <= 20
         AND (is_ad = 'True' OR pcebid = 'pcebid')
         GROUP BY substr(crawled_at, 1, 10), app_id) a
