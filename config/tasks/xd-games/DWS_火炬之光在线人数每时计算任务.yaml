@@ -30,7 +30,7 @@ db:
         'tappc' as source,
         online_players as online_players,
         crawled_at as crawled_at
-      FROM dws_taptap_pc_online_peak_players_rank_hourly
+      FROM dws_taptap_pc_online_peak_players_details_hourly
       WHERE app_id = 172664
       AND substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
     ) as a
