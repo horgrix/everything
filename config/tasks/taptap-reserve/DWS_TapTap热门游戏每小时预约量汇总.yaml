@@ -1,0 +1,84 @@
+name: "DWS_TapTap热门游戏每小时预约量汇总"
+depends_on:
+  - "DWS_TapTap热门游戏每小时预约量明细"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT 
+      crawled_at,
+      COUNT(*) AS game_conut,
+      SUM(reserve_count) AS reserve_count,
+      SUM(CASE WHEN distribution_type = 0 THEN 1 ELSE 0 END) AS biz_game_count,
+      SUM(CASE WHEN distribution_type = 0 THEN reserve_count ELSE 0 END) AS biz_reserve_count,
+      SUM(CASE WHEN distribution_type = 1 THEN 1 ELSE 0 END) AS mini_game_count,
+      SUM(CASE WHEN distribution_type = 1 THEN reserve_count ELSE 0 END) AS mini_reserve_count,
+      SUM(CASE WHEN distribution_type = 2 THEN 1 ELSE 0 END) AS tmk_game_count,
+      SUM(CASE WHEN distribution_type = 2 THEN reserve_count ELSE 0 END) AS tmk_reserve_count
+    FROM 
+      dws_taptap_reserve_v2_hourly
+    WHERE 
+      substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+    GROUP BY 
+      crawled_at
+trigger_type: system
+schedule: "22 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_reserve_summary_v2_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: game_conut
+          type: INTEGER
+        - name: reserve_count
+          type: INTEGER
+        - name: biz_game_count
+          type: INTEGER
+        - name: biz_reserve_count
+          type: INTEGER
+        - name: mini_game_count
+          type: INTEGER
+        - name: mini_reserve_count
+          type: INTEGER
+        - name: tmk_game_count
+          type: INTEGER
+        - name: tmk_reserve_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_reserve_summary_v2_hourly
+          columns: [crawled_at]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: game_conut
+          source: game_conut
+          to_number: true
+        - name: reserve_count
+          source: reserve_count
+          to_number: true
+        - name: biz_game_count
+          source: biz_game_count
+          to_number: true
+        - name: biz_reserve_count
+          source: biz_reserve_count
+          to_number: true
+        - name: mini_game_count
+          source: mini_game_count
+          to_number: true
+        - name: mini_reserve_count
+          source: mini_reserve_count
+          to_number: true
+        - name: tmk_game_count
+          source: tmk_game_count
+          to_number: true
+        - name: tmk_reserve_count
+          source: tmk_reserve_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

@@ -1,0 +1,110 @@
+name: "DWS_TapTap热门游戏每小时预约量明细"
+type: db
+db:
+  type: sqlite
+  path: "crawler.db"
+  query: >
+    SELECT
+      app_id,
+      app_name,
+      crawled_at,
+      distribution_type,
+      tag_1,
+      tag_2,
+      tag_3,
+      icon,
+      total_reserve_count,
+      reserve_count
+    FROM
+    (
+      SELECT 
+        app_id,
+        app_name,
+        crawled_at,
+        distribution_type,
+        tag_1,
+        tag_2,
+        tag_3,
+        icon,
+        reserve_count AS total_reserve_count,
+        reserve_count - lag_reserve_count AS reserve_count
+      FROM
+      (
+        SELECT 
+          app_id,
+          app_name,
+          crawled_at,
+          distribution_type,
+          tag_1,
+          tag_2,
+          tag_3,
+          icon,
+          reserve_count as reserve_count,
+          LAG(reserve_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) as lag_reserve_count
+        FROM taptap_game_info_hourly 
+        WHERE app_id IS NOT NULL
+        AND released_time = 0
+        AND crawled_at >= substr(datetime('now', 'localtime', '-24 hour'), 1, 13)
+      ) 
+    )
+    WHERE reserve_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+trigger_type: system
+schedule: "21 */2 * * *"
+outputs:
+  - target_table: "dws_taptap_reserve_v2_hourly"
+    table_schema:
+      columns:
+        - name: id
+          type: INTEGER
+          constraint: PRIMARY KEY AUTOINCREMENT
+        - name: app_id
+          type: INTEGER
+        - name: app_name
+          type: TEXT
+        - name: distribution_type
+          type: INTEGER
+        - name: tag_1
+          type: TEXT
+        - name: tag_2
+          type: TEXT
+        - name: tag_3
+          type: TEXT
+        - name: icon
+          type: TEXT
+        - name: total_reserve_count
+          type: INTEGER
+        - name: reserve_count
+          type: INTEGER
+        - name: crawled_at
+          type: TEXT
+      indexes:
+        - name: idx_uk_dws_taptap_reserve_v2_hourly
+          columns: [crawled_at, app_id]
+          unique: true
+    parser:
+      type: sdk_mapping
+      fields:
+        - name: app_id
+          source: app_id
+          to_number: true   
+        - name: app_name
+          source: app_name 
+        - name: distribution_type
+          source: distribution_type
+          to_number: true
+        - name: tag_1
+          source: tag_1
+        - name: tag_2
+          source: tag_2
+        - name: tag_3
+          source: tag_3
+        - name: icon
+          source: icon     
+        - name: total_reserve_count
+          source: total_reserve_count
+          to_number: true
+        - name: reserve_count
+          source: reserve_count
+          to_number: true
+        - name: crawled_at
+          source: crawled_at

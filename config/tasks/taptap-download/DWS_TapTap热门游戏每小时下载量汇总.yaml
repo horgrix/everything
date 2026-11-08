@@ -15,6 +15,8 @@ db:
       SUM(app_download_count) AS app_download_count
     FROM 
       dws_taptap_download_v2_hourly
+    WHERE 
+      substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
     GROUP BY 
       crawled_at
 trigger_type: system
