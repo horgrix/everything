@@ -13,6 +13,7 @@ db:
       tag_2,
       tag_3,
       icon,
+      hints,
       total_reserve_count,
       reserve_count
     FROM
@@ -26,6 +27,7 @@ db:
         tag_2,
         tag_3,
         icon,
+        hints,
         reserve_count AS total_reserve_count,
         reserve_count - lag_reserve_count AS reserve_count
       FROM
@@ -39,6 +41,7 @@ db:
           tag_2,
           tag_3,
           icon,
+          hints,
           reserve_count as reserve_count,
           LAG(reserve_count, 1, 0) OVER (PARTITION BY app_id ORDER BY crawled_at) as lag_reserve_count
         FROM taptap_game_info_hourly 
@@ -71,6 +74,8 @@ outputs:
           type: TEXT
         - name: icon
           type: TEXT
+        - name: hints
+          type: TEXT
         - name: total_reserve_count
           type: INTEGER
         - name: reserve_count
@@ -99,7 +104,9 @@ outputs:
         - name: tag_3
           source: tag_3
         - name: icon
-          source: icon     
+          source: icon    
+        - name: hints
+          source: hints 
         - name: total_reserve_count
           source: total_reserve_count
           to_number: true
