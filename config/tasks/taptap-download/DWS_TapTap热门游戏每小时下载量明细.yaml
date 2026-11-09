@@ -64,7 +64,7 @@ db:
         AND crawled_at >= substr(datetime('now', 'localtime', '-24 hour'), 1, 13)
       ) 
     )
-    WHERE total_pc_download_count + total_app_download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
+    WHERE app_download_count >= 0 AND pc_download_count >= 0 AND crawled_at = strftime('%Y-%m-%d %H', 'now', 'localtime')
 trigger_type: system
 schedule: "18 */2 * * *"
 outputs:
