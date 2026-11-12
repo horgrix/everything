@@ -17,6 +17,8 @@ DB_PATH = PROJECT_ROOT / "crawler.db"
 
 # (表名, crawled_at 的 strftime 格式, 保留时长修饰符)
 RULES = [
+    ("taptap_pc_search_discovery_ad_hourly", "%Y-%m-%d %H", "-36 hours"),
+    ("taptap_pc_search_hot_search_ad_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("taptap_app_android_search_discovery_ad_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("taptap_app_android_search_hot_search_ad_hourly", "%Y-%m-%d %H", "-36 hours"),
     ("taptap_app_android_search_hot_spot_ad_hourly", "%Y-%m-%d %H", "-36 hours"),

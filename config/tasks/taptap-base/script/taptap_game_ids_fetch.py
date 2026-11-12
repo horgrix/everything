@@ -16,7 +16,7 @@ DB_PATH = PROJECT_ROOT / "crawler.db"
 AD_TABLES = ["taptap_app_android_search_discovery_ad_hourly", "taptap_app_android_search_hot_search_ad_hourly", "taptap_app_android_search_hot_spot_ad_hourly",
          "taptap_app_ios_search_discovery_ad_hourly", "taptap_app_ios_search_hot_search_ad_hourly", "taptap_app_ios_search_hot_spot_ad_hourly",
          "taptap_pc_ad_top_hourly", "taptap_pc_ad_discovery_hourly", "taptap_app_android_landing_ad_hourly", "taptap_app_ios_landing_ad_hourly"]
-LIST_TABLES = ["taptap_list_app_hot_ids_daily", "taptap_list_pc_hot_ids_daily", "taptap_list_pc_played_ids_daily", "taptap_list_app_reserve_ids_daily"]
+LIST_TABLES = ["taptap_list_app_hot_ids_daily", "taptap_list_pc_hot_ids_daily", "taptap_list_pc_played_ids_daily", "taptap_list_app_reserve_ids_daily", "taptap_list_app_new_ids_daily"]
 YAML_PATH = PROJECT_ROOT / "config/tasks/taptap-base/manual/TapTap游戏信息采集任务.yaml"
 VAR_NAME = "app_id"
 
@@ -105,7 +105,6 @@ def main() -> None:
     assert written == app_ids, "写回后的 values 与数据库中的 app_id 不一致"
 
     print(f"已将 {len(app_ids)} 个 app_id 写入 {YAML_PATH}")
-
 
 if __name__ == "__main__":
     main()
