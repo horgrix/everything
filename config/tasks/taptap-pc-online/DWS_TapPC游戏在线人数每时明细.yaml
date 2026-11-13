@@ -49,8 +49,21 @@ db:
               tag_3,
               distribution_type,
               icon
-            FROM taptap_game_info_hourly
-            WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+            FROM (
+              SELECT
+                  app_id,
+                  app_name,
+                  tag_1,
+                  tag_2,
+                  tag_3,
+                  distribution_type,
+                  icon,
+                  ROW_NUMBER() OVER (PARTITION BY app_id ORDER BY crawled_at DESC) AS rn
+                FROM taptap_game_info_hourly
+                WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+            )
+            -- 取每个 app 当天最新快照：避免 join 放大，同时保证 name/tag/icon 是最新的
+            WHERE rn = 1
         ) b
         ON
         a.app_id = b.app_id

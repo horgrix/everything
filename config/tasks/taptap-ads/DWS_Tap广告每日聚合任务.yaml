@@ -78,17 +78,29 @@ db:
       ) a
       LEFT JOIN
         (
-          SELECT 
+          SELECT
             app_id,
             app_name,
             distribution_type,
             tag_1,
             tag_2,
             tag_3,
-            MAX(icon) AS icon
-          FROM taptap_game_info_hourly
-          WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
-          GROUP BY app_id   -- 原始表是 "小时×app"，按天过滤后同一 app 会有多行，这里收敛成一行避免 join 放大
+            icon
+          FROM (
+            SELECT
+              app_id,
+              app_name,
+              distribution_type,
+              tag_1,
+              tag_2,
+              tag_3,
+              icon,
+              ROW_NUMBER() OVER (PARTITION BY app_id ORDER BY crawled_at DESC) AS rn
+            FROM taptap_game_info_hourly
+            WHERE substr(crawled_at, 1, 10) = strftime('%Y-%m-%d', 'now', 'localtime')
+          )
+          -- 取每个 app 当天最新一次的快照（原表是「小时×app」，用 MAX() 取的是字典序最大值而非最新值）
+          WHERE rn = 1
         ) b
       ON 
         a.app_id = b.app_id
